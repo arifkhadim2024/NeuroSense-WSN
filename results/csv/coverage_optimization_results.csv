@@ -1,0 +1,4 @@
+seed,baseline_nodes,baseline_coverage_pct,baseline_overlap_pct,target_coverage_pct,ann_active_nodes,ann_coverage_pct,ann_overlap_pct,final_active_nodes,final_sleeping_nodes,final_coverage_pct,final_overlap_pct
+42,100,92.6951,82.7043,91.6951,13,33.6794,5.8219,54,46,91.6955,51.4885
+123,100,94.1561,81.1352,93.1561,17,35.7555,15.914,50,50,93.1565,45.5634
+456,100,94.3483,83.7001,93.3483,15,35.025,9.3304,54,46,93.3487,50.5766

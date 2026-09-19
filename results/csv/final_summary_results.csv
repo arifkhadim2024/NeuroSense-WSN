@@ -1,0 +1,10 @@
+Metric,Baseline_PSO_Hybrid,ANN_PSO_Hybrid,Unit,Absolute_Change,Percent_Change,Interpretation
+Active Sensor Nodes,100.0,56.0,Nodes,-44.0,-44.0,"44% active node reduction, conserving sensor lifespan"
+Sleeping Sensor Nodes,0.0,44.0,Nodes,44.0,100.0,Redundant nodes placed in low-power sleep mode
+WSN Sensing Coverage,93.73318,92.733564,%,-0.999616,-1.0664,Coverage strictly preserved within target (Δ ≈ 1.0%)
+Sensing Overlap Ratio,82.51317,54.969469,%,-27.543701,-33.381,Substantial 33.38% relative reduction in redundant sensing overlap
+First Node Dead (FND),144.666667,425.333333,Rounds,280.666666,194.0092,194% increase in network stability period before first node death
+Half Nodes Dead (HND),852.0,1000.0,Rounds,148.0,17.3709,HND sustained to the 1000-round simulation boundary
+Last Node Dead (LND),1000.0,1000.0,Rounds,0.0,0.0,LND not reached within 1000-round horizon for both methods
+Network Throughput,71520.0,48108.666667,Packets,-23411.333333,-32.734,Throughput reduction expected due to 44% sleeping nodes
+Simulation Execution Time,252.685812,128.056544,Seconds,-124.629268,-49.3218,49.3% faster execution due to smaller active routing topology

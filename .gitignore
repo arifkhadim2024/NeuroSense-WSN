@@ -1,0 +1,29 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Node / Web dependencies
+node_modules/
+web/node_modules/
+web/dist/
+dist/
+
+# Logs and environment
+*.log
+.env
+.env.local
+.env.*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS and Editor files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Large backup archives
+*.tar.gz

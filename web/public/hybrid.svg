@@ -1,0 +1,51 @@
+<svg viewBox="0 0 400 300" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#22c55e;stop-opacity:0.3" />
+      <stop offset="100%" style="stop-color:#22c55e;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="400" height="300" fill="#1f2937"/>
+  
+  <!-- Grid lines -->
+  <line x1="40" y1="250" x2="360" y2="250" stroke="#374151" stroke-width="1"/>
+  <line x1="40" y1="50" x2="360" y2="50" stroke="#374151" stroke-width="1" stroke-dasharray="5,5"/>
+  <line x1="40" y1="100" x2="360" y2="100" stroke="#374151" stroke-width="1" stroke-dasharray="5,5"/>
+  <line x1="40" y1="150" x2="360" y2="150" stroke="#374151" stroke-width="1" stroke-dasharray="5,5"/>
+  <line x1="40" y1="200" x2="360" y2="200" stroke="#374151" stroke-width="1" stroke-dasharray="5,5"/>
+  
+  <!-- Axes -->
+  <line x1="40" y1="250" x2="360" y2="250" stroke="#666" stroke-width="2"/>
+  <line x1="40" y1="50" x2="40" y2="250" stroke="#666" stroke-width="2"/>
+  
+  <!-- Hybrid curve (optimal decline) -->
+  <polyline points="50,60 100,72 150,88 200,110 250,140 300,180 350,215" 
+            fill="none" stroke="#22c55e" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="50" cy="60" r="3" fill="#22c55e"/>
+  <circle cx="100" cy="72" r="3" fill="#22c55e"/>
+  <circle cx="150" cy="88" r="3" fill="#22c55e"/>
+  <circle cx="200" cy="110" r="3" fill="#22c55e"/>
+  <circle cx="250" cy="140" r="3" fill="#22c55e"/>
+  <circle cx="300" cy="180" r="3" fill="#22c55e"/>
+  <circle cx="350" cy="215" r="3" fill="#22c55e"/>
+  
+  <!-- Fill area under curve -->
+  <polyline points="50,60 100,72 150,88 200,110 250,140 300,180 350,215 350,250 50,250" 
+            fill="url(#grad3)" opacity="0.4"/>
+  
+  <!-- Labels -->
+  <text x="20" y="260" font-size="12" fill="#999" text-anchor="end">0</text>
+  <text x="20" y="210" font-size="12" fill="#999" text-anchor="end">25</text>
+  <text x="20" y="160" font-size="12" fill="#999" text-anchor="end">50</text>
+  <text x="20" y="110" font-size="12" fill="#999" text-anchor="end">75</text>
+  <text x="20" y="60" font-size="12" fill="#999" text-anchor="end">100</text>
+  
+  <text x="50" y="275" font-size="12" fill="#999" text-anchor="middle">R1</text>
+  <text x="150" y="275" font-size="12" fill="#999" text-anchor="middle">R3</text>
+  <text x="250" y="275" font-size="12" fill="#999" text-anchor="middle">R5</text>
+  <text x="350" y="275" font-size="12" fill="#999" text-anchor="middle">R7</text>
+  
+  <!-- Title -->
+  <text x="200" y="25" font-size="16" fill="#22c55e" text-anchor="middle" font-weight="bold">Hybrid Protocol - Residual Energy</text>
+</svg>

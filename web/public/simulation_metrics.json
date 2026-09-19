@@ -1,0 +1,26 @@
+{
+  "LEACH": {
+    "FND": 89,
+    "HND": 219,
+    "LND": 347,
+    "total_throughput": 22580
+  },
+  "PEGASIS": {
+    "FND": 164,
+    "HND": 460,
+    "LND": 536,
+    "total_throughput": 44559
+  },
+  "HYBRID": {
+    "FND": 139,
+    "HND": 570,
+    "LND": 1000,
+    "total_throughput": 40749
+  },
+  "PSO_HYBRID": {
+    "FND": 156,
+    "HND": 837,
+    "LND": 1000,
+    "total_throughput": 72565
+  }
+}
