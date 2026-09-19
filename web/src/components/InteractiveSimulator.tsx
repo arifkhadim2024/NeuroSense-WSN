@@ -378,33 +378,33 @@ export const InteractiveSimulator: React.FC = () => {
   }, [nodes, chConnections, chainConnections, sinkPos]);
 
   return (
-    <div className="bg-gray-900/80 backdrop-blur-md rounded-3xl p-6 border border-cyan-500/30 shadow-2xl">
+    <div className="bg-[#0D1626] backdrop-blur-md rounded-3xl p-6 border border-[#1C3150] shadow-2xl">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
         <div>
           <h2 className="text-2xl font-bold bg-gradient-to-r from-cyan-400 via-purple-400 to-yellow-400 bg-clip-text text-transparent flex items-center gap-2">
             <Zap className="w-6 h-6 text-cyan-400" /> Real-Time WSN Routing Simulator
           </h2>
-          <p className="text-sm text-gray-400 mt-1">
+          <p className="text-sm text-slate-400 mt-1">
             Simulate node energy dissipation, cluster head selection, and PEGASIS chain communication live.
           </p>
         </div>
 
         {/* Live Status Indicators */}
         <div className="flex flex-wrap gap-3">
-          <div className="bg-gray-800/80 px-4 py-2 rounded-xl border border-cyan-500/20 text-center">
-            <span className="text-xs text-gray-400 block">Round</span>
+          <div className="bg-[#070B14] px-4 py-2 rounded-xl border border-[#1C3150] text-center">
+            <span className="text-xs text-slate-400 block">Round</span>
             <span className="text-lg font-bold text-cyan-400">{round}</span>
           </div>
-          <div className="bg-gray-800/80 px-4 py-2 rounded-xl border border-green-500/20 text-center">
-            <span className="text-xs text-gray-400 block">Alive Nodes</span>
-            <span className="text-lg font-bold text-green-400">{aliveCount} / {numNodes}</span>
+          <div className="bg-[#070B14] px-4 py-2 rounded-xl border border-[#1C3150] text-center">
+            <span className="text-xs text-slate-400 block">Alive Nodes</span>
+            <span className="text-lg font-bold text-emerald-400">{aliveCount} / {numNodes}</span>
           </div>
-          <div className="bg-gray-800/80 px-4 py-2 rounded-xl border border-yellow-500/20 text-center">
-            <span className="text-xs text-gray-400 block">Avg Energy</span>
+          <div className="bg-[#070B14] px-4 py-2 rounded-xl border border-[#1C3150] text-center">
+            <span className="text-xs text-slate-400 block">Avg Energy</span>
             <span className="text-lg font-bold text-yellow-400">{avgEnergy.toFixed(3)} J</span>
           </div>
-          <div className="bg-gray-800/80 px-4 py-2 rounded-xl border border-purple-500/20 text-center">
-            <span className="text-xs text-gray-400 block">Packets Sent</span>
+          <div className="bg-[#070B14] px-4 py-2 rounded-xl border border-[#1C3150] text-center">
+            <span className="text-xs text-slate-400 block">Packets Sent</span>
             <span className="text-lg font-bold text-purple-400">{throughput}</span>
           </div>
         </div>
@@ -412,7 +412,7 @@ export const InteractiveSimulator: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Canvas Display */}
-        <div className="lg:col-span-2 relative bg-gray-950 rounded-2xl border border-gray-800 overflow-hidden flex items-center justify-center p-2">
+        <div className="lg:col-span-2 relative bg-[#070B14] rounded-2xl border border-[#1C3150] overflow-hidden flex items-center justify-center p-2">
           <canvas
             ref={canvasRef}
             width={600}
@@ -425,13 +425,13 @@ export const InteractiveSimulator: React.FC = () => {
               setSinkPos({ x: Math.round(x), y: Math.round(y) });
             }}
           />
-          <div className="absolute top-4 left-4 bg-gray-900/80 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-gray-700 text-xs text-gray-300">
+          <div className="absolute top-4 left-4 bg-[#0D1626]/90 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-[#1C3150] text-xs text-slate-300">
             Click Canvas to Move Sink Position: ({sinkPos.x}, {sinkPos.y})
           </div>
         </div>
 
         {/* Controls & Configuration */}
-        <div className="bg-gray-800/50 backdrop-blur-sm p-5 rounded-2xl border border-cyan-500/20 flex flex-col justify-between space-y-6">
+        <div className="bg-[#070B14] backdrop-blur-sm p-5 rounded-2xl border border-[#1C3150] flex flex-col justify-between space-y-6">
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-cyan-400 flex items-center gap-2">
               <Cpu className="w-5 h-5" /> Simulation Controls
@@ -439,13 +439,13 @@ export const InteractiveSimulator: React.FC = () => {
 
             {/* Protocol Selector */}
             <div>
-              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider block mb-2">
+              <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">
                 Routing Protocol
               </label>
               <select
                 value={protocol}
                 onChange={(e) => setProtocol(e.target.value as Protocol)}
-                className="w-full bg-gray-900 border border-cyan-500/40 rounded-xl px-3 py-2 text-sm text-cyan-300 font-medium focus:outline-none focus:border-cyan-400"
+                className="w-full bg-[#0D1626] border border-[#1C3150] rounded-xl px-3 py-2 text-sm text-cyan-300 font-medium focus:outline-none focus:border-cyan-400"
               >
                 <option value="pso_hybrid">✨ PSO-Hybrid (Metaheuristic Optimized)</option>
                 <option value="hybrid">⚡ Standard Hybrid (LEACH + PEGASIS)</option>
@@ -456,7 +456,7 @@ export const InteractiveSimulator: React.FC = () => {
 
             {/* Node Count Slider */}
             <div>
-              <div className="flex justify-between text-xs text-gray-400 mb-1">
+              <div className="flex justify-between text-xs text-slate-400 mb-1">
                 <span>Number of Nodes (N)</span>
                 <span className="text-cyan-400 font-semibold">{numNodes}</span>
               </div>
@@ -467,13 +467,13 @@ export const InteractiveSimulator: React.FC = () => {
                 step={10}
                 value={numNodes}
                 onChange={(e) => setNumNodes(Number(e.target.value))}
-                className="w-full accent-cyan-400 bg-gray-700 rounded-lg h-2"
+                className="w-full accent-cyan-400 bg-slate-700 rounded-lg h-2"
               />
             </div>
 
             {/* Initial Energy Slider */}
             <div>
-              <div className="flex justify-between text-xs text-gray-400 mb-1">
+              <div className="flex justify-between text-xs text-slate-400 mb-1">
                 <span>Initial Energy (E₀)</span>
                 <span className="text-yellow-400 font-semibold">{initialEnergy} J</span>
               </div>
@@ -484,13 +484,13 @@ export const InteractiveSimulator: React.FC = () => {
                 step={0.1}
                 value={initialEnergy}
                 onChange={(e) => setInitialEnergy(Number(e.target.value))}
-                className="w-full accent-yellow-400 bg-gray-700 rounded-lg h-2"
+                className="w-full accent-yellow-400 bg-slate-700 rounded-lg h-2"
               />
             </div>
 
             {/* Speed Control Slider */}
             <div>
-              <div className="flex justify-between text-xs text-gray-400 mb-1">
+              <div className="flex justify-between text-xs text-slate-400 mb-1">
                 <span>Sim Speed (ms/round)</span>
                 <span className="text-purple-400 font-semibold">{speed} ms</span>
               </div>
@@ -501,19 +501,19 @@ export const InteractiveSimulator: React.FC = () => {
                 step={10}
                 value={speed}
                 onChange={(e) => setSpeed(Number(e.target.value))}
-                className="w-full accent-purple-400 bg-gray-700 rounded-lg h-2"
+                className="w-full accent-purple-400 bg-slate-700 rounded-lg h-2"
               />
             </div>
 
             {/* Heterogeneous Energy Toggle */}
-            <div className="flex items-center justify-between bg-gray-900/60 p-3 rounded-xl border border-purple-500/20">
-              <span className="text-xs font-medium text-gray-300 flex items-center gap-1.5">
+            <div className="flex items-center justify-between bg-[#0D1626] p-3 rounded-xl border border-purple-500/20">
+              <span className="text-xs font-medium text-slate-300 flex items-center gap-1.5">
                 <Shield className="w-4 h-4 text-purple-400" /> Heterogeneous WSN (SEP/DEEC)
               </span>
               <button
                 onClick={() => setIsHeterogeneous(!isHeterogeneous)}
                 className={`w-12 h-6 rounded-full transition-colors p-1 ${
-                  isHeterogeneous ? 'bg-purple-600' : 'bg-gray-700'
+                  isHeterogeneous ? 'bg-purple-600' : 'bg-slate-700'
                 }`}
               >
                 <div
@@ -542,13 +542,13 @@ export const InteractiveSimulator: React.FC = () => {
               <button
                 onClick={stepSimulation}
                 disabled={isRunning}
-                className="px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-xl text-gray-300 hover:bg-gray-700 disabled:opacity-50"
+                className="px-3 py-2.5 bg-[#0D1626] border border-[#1C3150] rounded-xl text-slate-300 hover:bg-slate-800 disabled:opacity-50"
               >
                 <SkipForward className="w-4 h-4" />
               </button>
               <button
                 onClick={resetNetwork}
-                className="px-3 py-2.5 bg-gray-800 border border-gray-700 rounded-xl text-gray-300 hover:bg-gray-700"
+                className="px-3 py-2.5 bg-[#0D1626] border border-[#1C3150] rounded-xl text-slate-300 hover:bg-slate-800"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
@@ -558,32 +558,32 @@ export const InteractiveSimulator: React.FC = () => {
       </div>
 
       {/* QoS Metric Badge Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pt-6 border-t border-gray-800">
-        <div className="bg-gray-800/40 p-4 rounded-2xl border border-cyan-500/20 flex items-center gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6 pt-6 border-t border-[#1C3150]">
+        <div className="bg-[#070B14] p-4 rounded-2xl border border-[#1C3150] flex items-center gap-3">
           <Activity className="w-8 h-8 text-cyan-400 p-1.5 bg-cyan-500/10 rounded-xl" />
           <div>
-            <span className="text-xs text-gray-400 block">FND (First Node Dead)</span>
+            <span className="text-xs text-slate-400 block">FND (First Node Dead)</span>
             <span className="text-lg font-bold text-white">{fnd !== null ? `Round ${fnd}` : 'All Alive'}</span>
           </div>
         </div>
-        <div className="bg-gray-800/40 p-4 rounded-2xl border border-yellow-500/20 flex items-center gap-3">
+        <div className="bg-[#070B14] p-4 rounded-2xl border border-[#1C3150] flex items-center gap-3">
           <Battery className="w-8 h-8 text-yellow-400 p-1.5 bg-yellow-500/10 rounded-xl" />
           <div>
-            <span className="text-xs text-gray-400 block">HND (Half Nodes Dead)</span>
+            <span className="text-xs text-slate-400 block">HND (Half Nodes Dead)</span>
             <span className="text-lg font-bold text-white">{hnd !== null ? `Round ${hnd}` : '> 50% Alive'}</span>
           </div>
         </div>
-        <div className="bg-gray-800/40 p-4 rounded-2xl border border-red-500/20 flex items-center gap-3">
+        <div className="bg-[#070B14] p-4 rounded-2xl border border-[#1C3150] flex items-center gap-3">
           <Zap className="w-8 h-8 text-red-400 p-1.5 bg-red-500/10 rounded-xl" />
           <div>
-            <span className="text-xs text-gray-400 block">LND (Last Node Dead)</span>
+            <span className="text-xs text-slate-400 block">LND (Last Node Dead)</span>
             <span className="text-lg font-bold text-white">{lnd !== null ? `Round ${lnd}` : 'Network Active'}</span>
           </div>
         </div>
-        <div className="bg-gray-800/40 p-4 rounded-2xl border border-purple-500/20 flex items-center gap-3">
+        <div className="bg-[#070B14] p-4 rounded-2xl border border-[#1C3150] flex items-center gap-3">
           <Shield className="w-8 h-8 text-purple-400 p-1.5 bg-purple-500/10 rounded-xl" />
           <div>
-            <span className="text-xs text-gray-400 block">Optimization Level</span>
+            <span className="text-xs text-slate-400 block">Optimization Level</span>
             <span className="text-sm font-bold text-purple-300">
               {protocol === 'pso_hybrid' ? 'Metaheuristic (PSO)' : 'Heuristic'}
             </span>
