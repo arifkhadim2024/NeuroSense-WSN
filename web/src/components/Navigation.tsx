@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Layers, Sparkles, GitBranch, Trophy, BookOpen,
-  Volume2, VolumeX, Download, PlusCircle, HelpCircle, Brain,
-  Play, Square, Maximize2, GraduationCap, Compass
+  Layers, Grid, GitBranch, Code2, BookOpen,
+  Volume2, VolumeX, Download, Brain,
+  ChevronDown, FileSpreadsheet, FileJson, Image,
+  Sparkles, Maximize2, GraduationCap, Compass
 } from 'lucide-react';
 import { useWSNSimulation } from '../context/SimulationContext';
 import { soundFX } from '../utils/soundEffects';
@@ -18,16 +19,14 @@ export type PrimaryTab =
 interface NavigationProps {
   activeTab: PrimaryTab;
   onSelectTab: (tab: PrimaryTab) => void;
-  onOpenNewExperiment: () => void;
-  onOpenExplain: () => void;
-  onOpenReport: () => void;
+  onOpenNewExperiment?: () => void;
+  onOpenExplain?: () => void;
+  onOpenReport?: () => void;
 }
 
 export const Navigation: React.FC<NavigationProps> = ({
   activeTab,
   onSelectTab,
-  onOpenNewExperiment,
-  onOpenExplain,
   onOpenReport
 }) => {
   const {
@@ -35,16 +34,30 @@ export const Navigation: React.FC<NavigationProps> = ({
     setUIMode,
     isPresentationMode,
     setIsPresentationMode,
-    isStoryPlaying,
-    storyStep,
-    startStoryMode,
-    stopStoryMode
+    exportTopologyCSV,
+    exportTelemetryJSON,
+    exportPublicationPNG,
+    startResearchDemo,
+    isResearchDemoActive
   } = useWSNSimulation();
 
   const [audioEnabled, setAudioEnabled] = useState<boolean>(soundFX.isAudioEnabled());
+  const [isExportMenuOpen, setIsExportMenuOpen] = useState<boolean>(false);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     return soundFX.subscribe((enabled) => setAudioEnabled(enabled));
+  }, []);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target as Node)) {
+        setIsExportMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const handleAudioToggle = () => {
@@ -52,21 +65,21 @@ export const Navigation: React.FC<NavigationProps> = ({
   };
 
   const navTabs: { id: PrimaryTab; num: string; name: string; subtitle: string; icon: React.ElementType }[] = [
-    { id: 'simulation', num: '01', name: 'Simulation', subtitle: 'Hero Digital Twin', icon: Layers },
-    { id: 'optimization', num: '02', name: 'Optimization', subtitle: 'ANN + PSO Swarm', icon: Sparkles },
-    { id: 'routing', num: '03', name: 'Routing', subtitle: 'LEACH / PEGASIS / Hybrid', icon: GitBranch },
-    { id: 'results', num: '04', name: 'Results', subtitle: 'Benchmarks & Telemetry', icon: Trophy },
-    { id: 'research', num: '05', name: 'Research', subtitle: 'Theory, Code & Guide', icon: BookOpen }
+    { id: 'simulation', num: '01', name: '3D Field Topology', subtitle: 'Spatial Simulation & Nodes', icon: Layers },
+    { id: 'optimization', num: '02', name: 'Voronoi & Multiplicity', subtitle: 'Heatmaps & Polygons', icon: Grid },
+    { id: 'routing', num: '03', name: 'Routing Protocols', subtitle: 'Benchmarks & Telemetry', icon: GitBranch },
+    { id: 'results', num: '04', name: 'Algorithm Source', subtitle: 'Python Core Modules', icon: Code2 },
+    { id: 'research', num: '05', name: 'Formulation & Theory', subtitle: 'Mathematical Proofs & Model', icon: BookOpen }
   ];
 
   return (
     <nav className="fixed top-0 w-full bg-[#050912]/95 backdrop-blur-2xl z-50 border-b border-[#1C3150] shadow-2xl font-mono text-xs">
-      <div className="max-w-[1700px] mx-auto px-3 sm:px-5">
+      <div className="max-w-[1750px] mx-auto px-3 sm:px-5">
         
-        {/* Top Bar: Brand, Mode Switch, 9-Step Story, Presentation, Audio, Modals */}
+        {/* Top Header Bar */}
         <div className="flex flex-wrap lg:flex-nowrap justify-between items-center py-2.5 gap-3 border-b border-[#1C3150]/60">
           
-          {/* Left: Brand Logo & Thesis Title */}
+          {/* Left: Brand Logo & Title */}
           <motion.div 
             className="flex items-center space-x-3 cursor-pointer shrink-0"
             onClick={() => {
@@ -82,14 +95,14 @@ export const Navigation: React.FC<NavigationProps> = ({
             <div>
               <div className="flex items-center space-x-2">
                 <span className="text-sm font-extrabold tracking-wide text-white uppercase font-sans">
-                  NEUROSENSE-WSN
+                  NEUROSENSE TOPOLOGY LAB
                 </span>
                 <span className="text-[9px] px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-bold uppercase tracking-wider hidden sm:inline-block">
-                  ANN + PSO-HYBRID
+                  RESEARCH WORKBENCH
                 </span>
               </div>
               <div className="text-[10px] text-cyan-400/80 font-semibold tracking-tight">
-                ANN Sensor Placement &bull; Overlap Elimination &bull; Energy-Aware Routing
+                ANN Sensor Placement &bull; Overlap Elimination &bull; PSO-Hybrid Routing
               </div>
             </div>
           </motion.div>
@@ -97,6 +110,106 @@ export const Navigation: React.FC<NavigationProps> = ({
           {/* Right Action Tools */}
           <div className="flex items-center flex-wrap gap-2 shrink-0">
             
+            {/* Export Research Dropdown Menu */}
+            <div className="relative" ref={exportMenuRef}>
+              <button
+                onClick={() => {
+                  soundFX.playClickSound();
+                  setIsExportMenuOpen(!isExportMenuOpen);
+                }}
+                onMouseEnter={() => soundFX.playHoverSound()}
+                className="px-3 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black rounded-xl shadow-md shadow-cyan-500/20 flex items-center space-x-1.5 transition-all text-xs cursor-pointer active:scale-95"
+                title="Export Research Datasets, Telemetry and Publication Figures"
+              >
+                <Download className="w-3.5 h-3.5 text-slate-950" />
+                <span>Export Research</span>
+                <ChevronDown className="w-3 h-3 text-slate-950 ml-0.5" />
+              </button>
+
+              <AnimatePresence>
+                {isExportMenuOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 mt-2 w-72 bg-[#090F1C]/98 backdrop-blur-xl border border-[#1C3150] rounded-2xl shadow-2xl p-2 z-50 overflow-hidden font-sans"
+                  >
+                    <div className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider text-cyan-400 font-bold border-b border-[#1C3150]/60 mb-1">
+                      Certified Research Exports
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        exportTopologyCSV();
+                        setIsExportMenuOpen(false);
+                      }}
+                      className="w-full px-3 py-2.5 text-left rounded-xl hover:bg-cyan-500/10 hover:border-cyan-500/30 border border-transparent flex items-start space-x-2.5 transition-all group cursor-pointer"
+                    >
+                      <div className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-300 group-hover:bg-cyan-500 group-hover:text-slate-950 transition-colors">
+                        <FileSpreadsheet className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-white group-hover:text-cyan-300 font-mono">Topology Dataset (.CSV)</div>
+                        <div className="text-[11px] text-slate-400">Node coordinates, battery, and cluster roles</div>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        exportTelemetryJSON();
+                        setIsExportMenuOpen(false);
+                      }}
+                      className="w-full px-3 py-2.5 text-left rounded-xl hover:bg-violet-500/10 hover:border-violet-500/30 border border-transparent flex items-start space-x-2.5 transition-all group cursor-pointer"
+                    >
+                      <div className="p-1.5 rounded-lg bg-violet-500/20 text-violet-300 group-hover:bg-violet-500 group-hover:text-slate-950 transition-colors">
+                        <FileJson className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-white group-hover:text-violet-300 font-mono">Metrics Telemetry (.JSON)</div>
+                        <div className="text-[11px] text-slate-400">CR, OR, HR, K, FND and scenario parameters</div>
+                      </div>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        exportPublicationPNG();
+                        setIsExportMenuOpen(false);
+                      }}
+                      className="w-full px-3 py-2.5 text-left rounded-xl hover:bg-emerald-500/10 hover:border-emerald-500/30 border border-transparent flex items-start space-x-2.5 transition-all group cursor-pointer"
+                    >
+                      <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 group-hover:bg-emerald-500 group-hover:text-slate-950 transition-colors">
+                        <Image className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-white group-hover:text-emerald-300 font-mono">Publication Figure (.PNG)</div>
+                        <div className="text-[11px] text-slate-400">High-res canvas snapshot for LaTeX / IEEE</div>
+                      </div>
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* 18-Step Automated Research Story Demo */}
+            <button
+              onClick={() => {
+                soundFX.playClickSound();
+                onSelectTab('simulation');
+                startResearchDemo();
+              }}
+              onMouseEnter={() => soundFX.playHoverSound()}
+              className={`px-3 py-1.5 rounded-xl border font-bold flex items-center space-x-1.5 transition-all text-xs cursor-pointer ${
+                isResearchDemoActive
+                  ? 'bg-violet-500 text-slate-950 border-violet-400 shadow-lg shadow-violet-500/30'
+                  : 'bg-[#111D33] hover:bg-[#162542] border-violet-500/40 text-violet-300'
+              }`}
+              title="18-Step Interactive Automated Research Demonstration Tour"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-violet-400" />
+              <span>{isResearchDemoActive ? 'Demo Active' : 'Research Demo (18 Steps)'}</span>
+            </button>
+
             {/* Beginner vs Research Mode Toggle */}
             <button
               onClick={() => {
@@ -109,49 +222,17 @@ export const Navigation: React.FC<NavigationProps> = ({
                   ? 'bg-amber-500/20 border-amber-500/40 text-amber-300 hover:bg-amber-500/30 shadow-md shadow-amber-500/10'
                   : 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/25 shadow-md shadow-cyan-500/10'
               }`}
-              title={uiMode === 'beginner' ? 'Switch to Advanced Research Mode (Full Math & Raw Metrics)' : 'Switch to Simplified Beginner Mode'}
+              title={uiMode === 'beginner' ? 'Switch to Advanced Research Mode' : 'Switch to Simplified Beginner Mode'}
             >
               {uiMode === 'beginner' ? (
                 <>
                   <Compass className="w-3.5 h-3.5 text-amber-400 animate-spin-slow" />
-                  <span>Beginner Mode</span>
+                  <span>Beginner</span>
                 </>
               ) : (
                 <>
                   <GraduationCap className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>Research Mode</span>
-                </>
-              )}
-            </button>
-
-            {/* 9-Step Explain Research Story Tour */}
-            <button
-              onClick={() => {
-                soundFX.playClickSound();
-                onSelectTab('simulation');
-                if (isStoryPlaying || storyStep !== null) {
-                  stopStoryMode();
-                } else {
-                  startStoryMode();
-                }
-              }}
-              onMouseEnter={() => soundFX.playHoverSound()}
-              className={`px-3 py-1.5 rounded-xl border font-bold flex items-center space-x-1.5 transition-all text-xs cursor-pointer ${
-                isStoryPlaying || storyStep !== null
-                  ? 'bg-violet-500 text-slate-950 border-violet-400 shadow-lg shadow-violet-500/30'
-                  : 'bg-[#111D33] hover:bg-[#162542] border-violet-500/40 text-violet-300'
-              }`}
-              title="9-Step Guided Presentation Sequence of the Core Research Story"
-            >
-              {isStoryPlaying || storyStep !== null ? (
-                <>
-                  <Square className="w-3 h-3 fill-current text-slate-950" />
-                  <span>Step {storyStep || 1}/9</span>
-                </>
-              ) : (
-                <>
-                  <Play className="w-3 h-3 fill-current text-violet-400" />
-                  <span>Explain (9 Steps)</span>
+                  <span>Research</span>
                 </>
               )}
             </button>
@@ -169,39 +250,10 @@ export const Navigation: React.FC<NavigationProps> = ({
                   ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-md'
                   : 'bg-[#0B1220] hover:bg-[#111D33] border-[#1C3150] text-slate-300'
               }`}
-              title="Toggle Fullscreen Presentation View (Viva/Defense Ready)"
+              title="Toggle Fullscreen Presentation View"
             >
               <Maximize2 className="w-3.5 h-3.5" />
               <span className="hidden xl:inline">Presentation</span>
-            </button>
-
-            {/* New Experiment Wizard Button */}
-            <button
-              onClick={() => {
-                soundFX.playClickSound();
-                onOpenNewExperiment();
-              }}
-              onMouseEnter={() => soundFX.playHoverSound()}
-              className="px-3 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black rounded-xl shadow-md shadow-cyan-500/20 flex items-center space-x-1.5 transition-all text-xs active:scale-95 cursor-pointer"
-              title="Launch Experiment Configurator"
-            >
-              <PlusCircle className="w-3.5 h-3.5 text-slate-950" />
-              <span className="hidden md:inline">New Experiment</span>
-              <span className="md:hidden">New</span>
-            </button>
-
-            {/* Explain Concepts Modal */}
-            <button
-              onClick={() => {
-                soundFX.playClickSound();
-                onOpenExplain();
-              }}
-              onMouseEnter={() => soundFX.playHoverSound()}
-              className="px-2.5 py-1.5 bg-[#111D33] hover:bg-[#162542] border border-[#1C3150] text-slate-300 hover:text-white font-bold rounded-xl shadow-sm flex items-center space-x-1.5 transition-all text-xs cursor-pointer"
-              title="Open Scientific Concept Encyclopedia"
-            >
-              <HelpCircle className="w-3.5 h-3.5 text-slate-400" />
-              <span className="hidden xl:inline">Concepts</span>
             </button>
 
             {/* Audio Feedback Toggle */}
@@ -212,27 +264,28 @@ export const Navigation: React.FC<NavigationProps> = ({
                   ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/25' 
                   : 'bg-[#0B1220] border-[#1C3150] text-slate-400 hover:bg-[#111D33]'
               }`}
-              title={audioEnabled ? 'Mute Audio Feedback' : 'Enable Audio Feedback'}
+              title={audioEnabled ? 'Mute Synthesized Audio Feedback' : 'Enable Synthesized Audio Feedback'}
             >
               {audioEnabled ? (
                 <Volume2 className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
               ) : (
                 <VolumeX className="w-3.5 h-3.5 text-slate-500" />
               )}
+              <span className="hidden md:inline">Audio</span>
             </button>
 
             {/* Technical Guide PDF / Report Button */}
             <button
               onClick={() => {
                 soundFX.playClickSound();
-                onOpenReport();
+                if (onOpenReport) onOpenReport();
               }}
               onMouseEnter={() => soundFX.playHoverSound()}
               className="px-2.5 py-1.5 bg-[#0B1220] hover:bg-[#111D33] border border-cyan-500/30 text-cyan-300 font-bold rounded-xl shadow-sm flex items-center space-x-1.5 transition-all text-xs cursor-pointer"
-              title="Open Technical Research Brief & PDF Export"
+              title="Download / Inspect Master Technical Guide PDF"
             >
               <Download className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="hidden lg:inline">PDF</span>
+              <span>Technical Guide PDF</span>
             </button>
 
             {/* Engine Status Online Pill */}
@@ -242,7 +295,7 @@ export const Navigation: React.FC<NavigationProps> = ({
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
               <span className="text-[10px] tracking-wider uppercase font-mono font-bold">
-                ONLINE
+                ENGINE ONLINE
               </span>
             </div>
 
@@ -290,5 +343,3 @@ export const Navigation: React.FC<NavigationProps> = ({
     </nav>
   );
 };
-
-

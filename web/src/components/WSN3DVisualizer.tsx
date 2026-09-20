@@ -203,8 +203,14 @@ export const WSN3DVisualizer: React.FC = () => {
     voronoiMode,
     voronoiPolygons,
     injectEnergyToNode,
+    injectNewNode,
+    removeNode,
     relocateNode,
     toggleNodeState,
+    obstaclePreset,
+    poiPreset,
+    jammerPreset,
+    isManuallyModified,
     annInferenceResult,
     isANNRunning,
     runANNInference,
@@ -241,6 +247,16 @@ export const WSN3DVisualizer: React.FC = () => {
 
   // Left Tool Dock: Inspect, Relocate, Inject, Remove
   const [toolMode, setToolMode] = useState<ToolMode>('inspect');
+
+  // Drag & Drop State
+  const isDraggingRef = useRef<boolean>(false);
+  const draggedNodeIdRef = useRef<number | null>(null);
+  const [dragBadge, setDragBadge] = useState<{ x: number; y: number; screenX: number; screenY: number } | null>(null);
+
+  // Layer Group Refs for Obstacles, POIs, and Jammers
+  const obstaclesLayerGroupRef = useRef<THREE.Group | null>(null);
+  const poiLayerGroupRef = useRef<THREE.Group | null>(null);
+  const jammerLayerGroupRef = useRef<THREE.Group | null>(null);
 
   // Visualization Mode Selector: FULL, NETWORK, COVERAGE, ROUTING, ENERGY, VORONOI
   const [visMode, setVisMode] = useState<VisMode>('full');
@@ -689,6 +705,21 @@ export const WSN3DVisualizer: React.FC = () => {
     labelsLayerGroup.renderOrder = 12;
     scene.add(labelsLayerGroup);
     labelsLayerGroupRef.current = labelsLayerGroup;
+
+    const obstaclesGroup = new THREE.Group();
+    obstaclesGroup.renderOrder = 13;
+    scene.add(obstaclesGroup);
+    obstaclesLayerGroupRef.current = obstaclesGroup;
+
+    const poiGroup = new THREE.Group();
+    poiGroup.renderOrder = 14;
+    scene.add(poiGroup);
+    poiLayerGroupRef.current = poiGroup;
+
+    const jammerGroup = new THREE.Group();
+    jammerGroup.renderOrder = 15;
+    scene.add(jammerGroup);
+    jammerLayerGroupRef.current = jammerGroup;
 
     // Selection Beacon Group
     const selectionGroup = new THREE.Group();
@@ -1767,8 +1798,260 @@ export const WSN3DVisualizer: React.FC = () => {
   }, [isOptimizing, activeForceVectors, to3DPos, W, H]);
 
   // -------------------------------------------------------------
-  // 10. 3D RAYCASTING & HOVER / CLICK INTERACTION
+  // 9b. OBSTACLES 3D RENDERING
   // -------------------------------------------------------------
+  useEffect(() => {
+    const group = obstaclesLayerGroupRef.current;
+    if (!group) return;
+    group.clear();
+
+    if (obstaclePreset === 'central_lake' || obstaclePreset === 'central-lake') {
+      const waterGeo = new THREE.CylinderGeometry(16, 16, 0.4, 48);
+      const waterMat = new THREE.MeshStandardMaterial({
+        color: 0x0284C7,
+        roughness: 0.15,
+        metalness: 0.85,
+        transparent: true,
+        opacity: 0.75
+      });
+      const waterMesh = new THREE.Mesh(waterGeo, waterMat);
+      waterMesh.position.set(0, 0.2, 0);
+      group.add(waterMesh);
+
+      const rimGeo = new THREE.RingGeometry(15.8, 16.6, 48);
+      rimGeo.rotateX(-Math.PI / 2);
+      const rimMat = new THREE.MeshBasicMaterial({ color: 0x38BDF8, side: THREE.DoubleSide });
+      const rim = new THREE.Mesh(rimGeo, rimMat);
+      rim.position.set(0, 0.42, 0);
+      group.add(rim);
+
+      const label = createTextSprite('🌊 CENTRAL LAKE RESERVOIR', '#38BDF8');
+      label.position.set(0, 4.5, 0);
+      label.scale.set(10, 5, 1);
+      group.add(label);
+    } else if (obstaclePreset === 'dual_walls' || obstaclePreset === 'dual-walls') {
+      const wallGeo = new THREE.BoxGeometry(3.5, 7.0, 36);
+      const wallMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.7, metalness: 0.5 });
+      
+      const wallA = new THREE.Mesh(wallGeo, wallMat);
+      wallA.position.set(-16, 3.5, 0);
+      group.add(wallA);
+
+      const wallB = new THREE.Mesh(wallGeo, wallMat);
+      wallB.position.set(16, 3.5, 0);
+      group.add(wallB);
+
+      const labelA = createTextSprite('🚧 CONCRETE WALL ALPHA', '#F59E0B');
+      labelA.position.set(-16, 8.5, 0);
+      labelA.scale.set(8, 4, 1);
+      group.add(labelA);
+
+      const labelB = createTextSprite('🚧 CONCRETE WALL BETA', '#F59E0B');
+      labelB.position.set(16, 8.5, 0);
+      labelB.scale.set(8, 4, 1);
+      group.add(labelB);
+    } else if (obstaclePreset === 'perimeter_basins' || obstaclePreset === 'corner-zones') {
+      const basinCoords = [
+        { x: -30, z: -30, label: 'BASIN SECTOR NW' },
+        { x: 30, z: -30, label: 'BASIN SECTOR NE' },
+        { x: -30, z: 30, label: 'BASIN SECTOR SW' },
+        { x: 30, z: 30, label: 'BASIN SECTOR SE' },
+      ];
+      basinCoords.forEach(b => {
+        const bGeo = new THREE.CylinderGeometry(10, 10, 0.3, 32);
+        const bMat = new THREE.MeshStandardMaterial({ color: 0x854D0E, roughness: 0.9, metalness: 0.3, transparent: true, opacity: 0.7 });
+        const bMesh = new THREE.Mesh(bGeo, bMat);
+        bMesh.position.set(b.x, 0.15, b.z);
+        group.add(bMesh);
+
+        const bLabel = createTextSprite(`⚠️ ${b.label}`, '#EAB308');
+        bLabel.position.set(b.x, 3.2, b.z);
+        bLabel.scale.set(7, 3.5, 1);
+        group.add(bLabel);
+      });
+    }
+  }, [obstaclePreset, createTextSprite]);
+
+  // -------------------------------------------------------------
+  // 9c. POINTS OF INTEREST (POI) 3D RENDERING
+  // -------------------------------------------------------------
+  useEffect(() => {
+    const group = poiLayerGroupRef.current;
+    if (!group) return;
+    group.clear();
+
+    if (poiPreset === 'none') return;
+
+    const poiList = (poiPreset === 'quad_hotspots' || poiPreset === 'high-value-assets')
+      ? [
+          { id: 'POI-1', x: -25, z: 25, label: '🎯 POI-1 (Critical Core)' },
+          { id: 'POI-2', x: 25, z: 25, label: '🎯 POI-2 (Telemetry Hub)' },
+          { id: 'POI-3', x: -25, z: -25, label: '🎯 POI-3 (Infra Node)' },
+          { id: 'POI-4', x: 25, z: -25, label: '🎯 POI-4 (Perimeter Zone)' }
+        ]
+      : (poiPreset === 'perimeter_sentinel' || poiPreset === 'perimeter-patrol')
+      ? [
+          { id: 'SEN-N', x: 0, z: -40, label: '🛡️ SENTINEL NORTH' },
+          { id: 'SEN-S', x: 0, z: 40, label: '🛡️ SENTINEL SOUTH' },
+          { id: 'SEN-E', x: 40, z: 0, label: '🛡️ SENTINEL EAST' },
+          { id: 'SEN-W', x: -40, z: 0, label: '🛡️ SENTINEL WEST' }
+        ]
+      : [
+          { id: 'POI-CORE', x: 0, z: 0, label: '🎯 PRIMARY STRATEGIC TARGET' }
+        ];
+
+    poiList.forEach(poi => {
+      const diaGeo = new THREE.OctahedronGeometry(1.4, 0);
+      const diaMat = new THREE.MeshStandardMaterial({
+        color: 0xEC4899,
+        emissive: 0xEC4899,
+        emissiveIntensity: 1.8,
+        roughness: 0.2,
+        metalness: 0.8
+      });
+      const diaMesh = new THREE.Mesh(diaGeo, diaMat);
+      diaMesh.position.set(poi.x, 4.0, poi.z);
+      group.add(diaMesh);
+
+      const ringGeo = new THREE.RingGeometry(1.2, 2.2, 32);
+      ringGeo.rotateX(-Math.PI / 2);
+      const ringMat = new THREE.MeshBasicMaterial({ color: 0xEC4899, side: THREE.DoubleSide, transparent: true, opacity: 0.65 });
+      const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+      ringMesh.position.set(poi.x, 0.12, poi.z);
+      group.add(ringMesh);
+
+      const beamGeo = new THREE.CylinderGeometry(0.1, 0.2, 12, 16);
+      const beamMat = new THREE.MeshBasicMaterial({ color: 0xF472B6, transparent: true, opacity: 0.35 });
+      const beamMesh = new THREE.Mesh(beamGeo, beamMat);
+      beamMesh.position.set(poi.x, 6.0, poi.z);
+      group.add(beamMesh);
+
+      const sprite = createTextSprite(poi.label, '#EC4899');
+      sprite.position.set(poi.x, 9.5, poi.z);
+      sprite.scale.set(8, 4, 1);
+      group.add(sprite);
+    });
+  }, [poiPreset, createTextSprite]);
+
+  // -------------------------------------------------------------
+  // 9d. RF JAMMER 3D RENDERING
+  // -------------------------------------------------------------
+  useEffect(() => {
+    const group = jammerLayerGroupRef.current;
+    if (!group) return;
+    group.clear();
+
+    if (jammerPreset === 'none') return;
+
+    const jammerPositions = (jammerPreset === 'single_broadband' || jammerPreset === 'central-jammer')
+      ? [{ x: 0, z: 0, radius: 24, label: '⚡ HIGH-POWER BROADBAND RF JAMMER (-18dB SNR)' }]
+      : [
+          { x: -22, z: 16, radius: 16, label: '⚡ RF JAMMER ALPHA' },
+          { x: 22, z: -16, radius: 16, label: '⚡ RF JAMMER BETA' }
+        ];
+
+    jammerPositions.forEach(j => {
+      const domeGeo = new THREE.SphereGeometry(j.radius, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+      const domeMat = new THREE.MeshStandardMaterial({
+        color: 0xF43F5E,
+        emissive: 0xBE123C,
+        emissiveIntensity: 0.8,
+        transparent: true,
+        opacity: 0.22,
+        wireframe: true,
+        side: THREE.DoubleSide
+      });
+      const domeMesh = new THREE.Mesh(domeGeo, domeMat);
+      domeMesh.position.set(j.x, 0, j.z);
+      group.add(domeMesh);
+
+      const mastGeo = new THREE.CylinderGeometry(0.6, 1.2, 6, 16);
+      const mastMat = new THREE.MeshStandardMaterial({ color: 0x881337, metalness: 0.8, roughness: 0.3 });
+      const mastMesh = new THREE.Mesh(mastGeo, mastMat);
+      mastMesh.position.set(j.x, 3.0, j.z);
+      group.add(mastMesh);
+
+      const tipGeo = new THREE.SphereGeometry(1.2, 16, 16);
+      const tipMat = new THREE.MeshStandardMaterial({ color: 0xFF0033, emissive: 0xFF0033, emissiveIntensity: 2.5 });
+      const tipMesh = new THREE.Mesh(tipGeo, tipMat);
+      tipMesh.position.set(j.x, 6.2, j.z);
+      group.add(tipMesh);
+
+      const sprite = createTextSprite(j.label, '#F43F5E');
+      sprite.position.set(j.x, 9.5, j.z);
+      sprite.scale.set(10, 5, 1);
+      group.add(sprite);
+    });
+  }, [jammerPreset, createTextSprite]);
+
+  // -------------------------------------------------------------
+  // 10. 3D RAYCASTING, DRAG-AND-DROP & HOVER / CLICK INTERACTION
+  // -------------------------------------------------------------
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!containerRef.current || !cameraRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    const ny = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(nx, ny), cameraRef.current);
+
+    const meshObjects: THREE.Object3D[] = [];
+    nodeHandlesRef.current.forEach((h) => {
+      h.group.children.forEach((c) => meshObjects.push(c));
+    });
+
+    const intersects = raycaster.intersectObjects(meshObjects);
+
+    if (intersects.length > 0) {
+      const parentGroup = intersects[0].object.parent;
+      if (parentGroup && parentGroup.userData && parentGroup.userData.node) {
+        const hitNode = parentGroup.userData.node as DynamicNodeState;
+
+        if (toolMode === 'relocate') {
+          isDraggingRef.current = true;
+          draggedNodeIdRef.current = hitNode.node_id;
+          if (controlsRef.current) controlsRef.current.enabled = false;
+          soundFX.playClickSound();
+          setDragBadge({
+            x: hitNode.x,
+            y: hitNode.y,
+            screenX: e.clientX - rect.left,
+            screenY: e.clientY - rect.top
+          });
+          return;
+        } else if (toolMode === 'inspect') {
+          setSelectedNode(hitNode);
+          setIsDrawerOpen(true);
+          soundFX.playClickSound();
+          return;
+        } else if (toolMode === 'inject') {
+          injectEnergyToNode(hitNode.node_id, 0.25);
+          soundFX.playClickSound();
+          return;
+        } else if (toolMode === 'remove') {
+          removeNode(hitNode.node_id);
+          soundFX.playClickSound();
+          return;
+        }
+      }
+    }
+
+    // If clicking ground in 'inject' mode:
+    if (toolMode === 'inject') {
+      const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+      const hitPoint = new THREE.Vector3();
+      if (raycaster.ray.intersectPlane(groundPlane, hitPoint)) {
+        const fieldX = Math.round((((hitPoint.x / 100) + 0.5) * W) * 10) / 10;
+        const fieldY = Math.round((((-hitPoint.z / 100) + 0.5) * H) * 10) / 10;
+        if (fieldX >= 2 && fieldX <= W - 2 && fieldY >= 2 && fieldY <= H - 2) {
+          injectNewNode(fieldX, fieldY, 'normal');
+          triggerArrivalRipple(hitPoint, 0x10B981);
+        }
+      }
+    }
+  };
+
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!containerRef.current || !cameraRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
@@ -1777,10 +2060,40 @@ export const WSN3DVisualizer: React.FC = () => {
 
     mouseNormRef.current = { x: nx, y: ny };
 
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(nx, ny), cameraRef.current);
+
+    // If dragging a node:
+    if (isDraggingRef.current && draggedNodeIdRef.current !== null) {
+      const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+      const hitPoint = new THREE.Vector3();
+      if (raycaster.ray.intersectPlane(groundPlane, hitPoint)) {
+        const clampedSceneX = Math.max(-48, Math.min(48, hitPoint.x));
+        const clampedSceneZ = Math.max(-48, Math.min(48, hitPoint.z));
+        const fieldX = Math.max(2, Math.min(W - 2, ((clampedSceneX / 100) + 0.5) * W));
+        const fieldY = Math.max(2, Math.min(H - 2, ((-clampedSceneZ / 100) + 0.5) * H));
+
+        const handle = nodeHandlesRef.current.get(draggedNodeIdRef.current);
+        if (handle) {
+          handle.group.position.set(clampedSceneX, handle.baseY, clampedSceneZ);
+          if (handle.diskMesh) handle.diskMesh.position.set(clampedSceneX, 0.06, clampedSceneZ);
+          if (handle.diskRingMesh) handle.diskRingMesh.position.set(clampedSceneX, 0.07, clampedSceneZ);
+          if (handle.sprite) handle.sprite.position.set(clampedSceneX, handle.baseY + 4.0, clampedSceneZ);
+        }
+
+        setDragBadge({
+          x: Number(fieldX.toFixed(1)),
+          y: Number(fieldY.toFixed(1)),
+          screenX: e.clientX - rect.left,
+          screenY: e.clientY - rect.top
+        });
+        relocateNode(draggedNodeIdRef.current, fieldX, fieldY);
+      }
+      return;
+    }
+
+    // Hover detection
     if (nodeHandlesRef.current.size > 0) {
-      const raycaster = new THREE.Raycaster();
-      raycaster.setFromCamera(new THREE.Vector2(nx, ny), cameraRef.current);
-      
       const meshObjects: THREE.Object3D[] = [];
       nodeHandlesRef.current.forEach((h) => {
         h.group.children.forEach((c) => meshObjects.push(c));
@@ -1797,7 +2110,7 @@ export const WSN3DVisualizer: React.FC = () => {
           }
           setHoveredNode(hovered);
           setHoverScreenPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-          containerRef.current.style.cursor = 'pointer';
+          containerRef.current.style.cursor = toolMode === 'relocate' ? 'grab' : 'pointer';
 
           if (hoverHighlightMeshRef.current) {
             hoverHighlightMeshRef.current.position.set(parentGroup.position.x, 0.14, parentGroup.position.z);
@@ -1815,33 +2128,31 @@ export const WSN3DVisualizer: React.FC = () => {
         hoverHighlightMeshRef.current.visible = false;
       }
     }
-    containerRef.current.style.cursor = 'default';
+    containerRef.current.style.cursor = toolMode === 'inject' ? 'crosshair' : 'default';
+  };
+
+  const handlePointerUp = () => {
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false;
+      draggedNodeIdRef.current = null;
+      setDragBadge(null);
+      if (controlsRef.current) controlsRef.current.enabled = true;
+      soundFX.playClickSound();
+    }
   };
 
   const handlePointerLeave = () => {
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false;
+      draggedNodeIdRef.current = null;
+      setDragBadge(null);
+      if (controlsRef.current) controlsRef.current.enabled = true;
+    }
     mouseNormRef.current = { x: 0, y: 0 };
     setHoveredNode(null);
     setHoverScreenPos(null);
     if (hoverHighlightMeshRef.current) {
       hoverHighlightMeshRef.current.visible = false;
-    }
-  };
-
-  const handleClick = () => {
-    if (hoveredNode) {
-      soundFX.playClickSound();
-      
-      if (toolMode === 'inspect') {
-        setSelectedNode(hoveredNode);
-      } else if (toolMode === 'relocate') {
-        const newX = Math.max(5, Math.min(W - 5, hoveredNode.x + (Math.random() - 0.5) * 12));
-        const newY = Math.max(5, Math.min(H - 5, hoveredNode.y + (Math.random() - 0.5) * 12));
-        relocateNode(hoveredNode.node_id, newX, newY);
-      } else if (toolMode === 'inject') {
-        injectEnergyToNode(hoveredNode.node_id, 0.2);
-      } else if (toolMode === 'remove') {
-        toggleNodeState(hoveredNode.node_id);
-      }
     }
   };
 
@@ -2264,14 +2575,152 @@ export const WSN3DVisualizer: React.FC = () => {
             ))}
           </div>
 
+          {/* Manual Modification Indicator */}
+          {isManuallyModified && (
+            <div className="absolute top-3 left-3.5 z-20 pointer-events-auto bg-amber-500/20 border border-amber-400/60 rounded-xl px-3 py-1 text-[10px] font-mono font-bold text-amber-300 flex items-center space-x-1.5 backdrop-blur-md shadow-lg shadow-amber-500/10">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+              <span>INTERACTIVE MODIFICATION ACTIVE</span>
+            </div>
+          )}
+
           {/* 3D Canvas Viewport */}
           <div
             ref={containerRef}
+            onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
             onPointerLeave={handlePointerLeave}
-            onClick={handleClick}
-            className="w-full h-full relative z-0 cursor-grab active:cursor-grabbing overflow-hidden"
+            className="w-full h-full relative z-0 cursor-grab active:cursor-grabbing overflow-hidden select-none"
           />
+
+          {/* Real-Time Floating Drag Coordinate HUD Badge */}
+          {dragBadge && (
+            <div 
+              id="drag-coord-badge"
+              className="absolute pointer-events-none z-50 bg-slate-900/95 border border-cyan-400 text-cyan-300 px-3 py-1.5 rounded-lg shadow-xl shadow-cyan-950/80 backdrop-blur-md text-xs font-mono font-bold flex items-center space-x-2 animate-pulse"
+              style={{ left: `${dragBadge.screenX + 16}px`, top: `${dragBadge.screenY - 24}px` }}
+            >
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+              <span className="text-[10px] text-slate-400 uppercase">REPOSITIONING:</span>
+              <span className="text-white font-extrabold">X: {dragBadge.x.toFixed(1)}m | Y: {dragBadge.y.toFixed(1)}m</span>
+            </div>
+          )}
+
+          {/* Slide-Out Telemetry Drawer for Selected Node */}
+          {selectedNode && isDrawerOpen && (
+            <div className="absolute right-3.5 top-16 bottom-16 w-80 z-40 pointer-events-auto bg-[#070E1A]/95 backdrop-blur-2xl border border-cyan-500/50 rounded-3xl p-4 shadow-2xl shadow-cyan-950/80 flex flex-col justify-between font-mono text-xs animate-fadeIn">
+              {/* Drawer Header */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between pb-2 border-b border-[#1C3150]">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm font-extrabold text-cyan-300 font-mono">SENSOR [N{selectedNode.node_id}]</span>
+                    <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase ${
+                      activeClusterHeads.includes(selectedNode.node_id)
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-400/50'
+                        : selectedNode.node_type === 'super'
+                        ? 'bg-purple-500/20 text-purple-300 border border-purple-400/50'
+                        : selectedNode.node_type === 'advanced'
+                        ? 'bg-blue-500/20 text-blue-300 border border-blue-400/50'
+                        : 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/50'
+                    }`}>
+                      {activeClusterHeads.includes(selectedNode.node_id) ? 'CLUSTER HEAD' : `${selectedNode.node_type} NODE`}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setIsDrawerOpen(false)}
+                    className="text-slate-400 hover:text-white text-xs font-bold p-1 cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Battery Residual Energy Bar */}
+                <div className="p-2.5 rounded-2xl bg-[#050912] border border-[#1C3150] space-y-1.5">
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-slate-400">Residual Energy:</span>
+                    <span className="text-cyan-300 font-extrabold">{selectedNode.currentEnergy.toFixed(3)} J / {selectedNode.energy.toFixed(3)} J</span>
+                  </div>
+                  <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-300 ${
+                        selectedNode.currentEnergy / selectedNode.energy > 0.5
+                          ? 'bg-gradient-to-r from-emerald-500 to-cyan-400'
+                          : selectedNode.currentEnergy / selectedNode.energy > 0.2
+                          ? 'bg-gradient-to-r from-amber-500 to-yellow-400'
+                          : 'bg-gradient-to-r from-rose-500 to-red-600'
+                      }`}
+                      style={{ width: `${Math.max(0, Math.min(100, (selectedNode.currentEnergy / selectedNode.energy) * 100))}%` }}
+                    />
+                  </div>
+                  <div className="text-[9px] text-slate-500 text-right">
+                    {((selectedNode.currentEnergy / selectedNode.energy) * 100).toFixed(1)}% Capacity
+                  </div>
+                </div>
+
+                {/* Sensor Spatial Diagnostics */}
+                <div className="space-y-1.5 text-[10px]">
+                  <div className="flex justify-between py-1 border-b border-[#1C3150]/60">
+                    <span className="text-slate-400">Spatial Coords (X, Y):</span>
+                    <span className="text-white font-bold">{selectedNode.x.toFixed(2)}m, {selectedNode.y.toFixed(2)}m</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-[#1C3150]/60">
+                    <span className="text-slate-400">Distance to Base Station:</span>
+                    <span className="text-amber-400 font-bold">{selectedNode.sink_distance.toFixed(1)}m</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-[#1C3150]/60">
+                    <span className="text-slate-400">Active Neighbors (Rc=30m):</span>
+                    <span className="text-cyan-400 font-bold">{selectedNode.neighbors} nodes</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-[#1C3150]/60">
+                    <span className="text-slate-400">Coverage Contribution:</span>
+                    <span className="text-emerald-400 font-bold">{(selectedNode.coverage_contribution * 100).toFixed(1)}%</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-[#1C3150]/60">
+                    <span className="text-slate-400">Overlap Ratio:</span>
+                    <span className="text-rose-400 font-bold">{(selectedNode.overlap_ratio * 100).toFixed(1)}%</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-[#1C3150]/60">
+                    <span className="text-slate-400">ANN Classification:</span>
+                    <span className="text-cyan-300 font-bold">{selectedNode.final_state}</span>
+                  </div>
+                  <div className="flex justify-between py-1">
+                    <span className="text-slate-400">Operational Status:</span>
+                    <span className={`font-bold ${selectedNode.isAlive ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {selectedNode.isAlive ? 'ONLINE / TRANSMITTING' : 'DEAD / DEPLETED'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Direct Sensor Actions */}
+              <div className="space-y-1.5 pt-3 border-t border-[#1C3150]">
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    onClick={() => injectEnergyToNode(selectedNode.node_id, 0.25)}
+                    className="py-2 px-2.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-400/50 text-emerald-300 font-bold text-[10px] cursor-pointer transition-all flex items-center justify-center space-x-1"
+                  >
+                    <PlusCircle className="w-3 h-3" />
+                    <span>+0.25J Charge</span>
+                  </button>
+
+                  <button
+                    onClick={() => toggleNodeState(selectedNode.node_id)}
+                    className="py-2 px-2.5 rounded-xl bg-blue-500/20 hover:bg-blue-500/30 border border-blue-400/50 text-blue-300 font-bold text-[10px] cursor-pointer transition-all flex items-center justify-center space-x-1"
+                  >
+                    <span>Toggle Sleep</span>
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => removeNode(selectedNode.node_id)}
+                  className="w-full py-2 px-3 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/50 text-rose-300 font-bold text-[10px] cursor-pointer transition-all flex items-center justify-center space-x-1"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>Delete Sensor Node</span>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Floating Compact ANN Coverage Predictor HUD Card */}
           <div className="absolute top-16 right-3.5 z-20 pointer-events-auto bg-[#070E1A]/90 backdrop-blur-xl border border-cyan-500/40 rounded-2xl p-3 shadow-2xl text-[11px] font-mono space-y-2 min-w-[210px] hidden sm:block">

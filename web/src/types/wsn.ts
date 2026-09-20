@@ -312,4 +312,7 @@ export interface BeforeAfterOptimizationMetrics {
   compositeFitness: number;
 }
 
-
+export type ObstaclePreset = 'none' | 'central-lake' | 'dual-walls' | 'corner-zones' | 'central_lake' | 'dual_walls' | 'perimeter_basins';
+export type POIPreset = 'none' | 'high-value-assets' | 'perimeter-patrol' | 'dynamic-convoy' | 'quad_hotspots' | 'perimeter_sentinel' | 'center_target';
+export type DutyCyclePreset = 'none' | 'adaptive-redundancy' | 'harvesting-duty-cycle' | 'adaptive' | 'sleep_44' | 'all_active' | 'aggressive_save';
+export type JammerPreset = 'none' | 'central-jammer' | 'dual-jammers' | 'single_broadband' | 'dual_spot';

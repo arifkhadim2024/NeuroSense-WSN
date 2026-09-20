@@ -613,6 +613,33 @@ class SoundFXEngine {
       osc.stop(now + 0.18);
     } catch {}
   }
+
+  // 19. Alert Tone / Warning Siren
+  public playAlertTone(): void {
+    if (!this.enabled) return;
+    const sys = this.initCtx();
+    if (!sys) return;
+    const { ctx, masterGain } = sys;
+
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(580, now);
+      osc.frequency.exponentialRampToValueAtTime(320, now + 0.25);
+
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
+
+      osc.connect(gain);
+      gain.connect(masterGain);
+
+      osc.start(now);
+      osc.stop(now + 0.28);
+    } catch {}
+  }
 }
 
 export const soundFX = new SoundFXEngine();

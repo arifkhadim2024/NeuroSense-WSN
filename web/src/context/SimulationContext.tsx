@@ -11,7 +11,11 @@ import type {
   OptimizationIterationData,
   VoronoiDisplayMode,
   CoverageDisplayMode,
-  RoundSnapshot
+  RoundSnapshot,
+  ObstaclePreset,
+  POIPreset,
+  DutyCyclePreset,
+  JammerPreset
 } from '../types/wsn';
 import { 
   calculateTxEnergy, 
@@ -317,10 +321,38 @@ interface SimulationContextType {
   currentEventStageLabel: string;
   setCurrentEventStageLabel: (lbl: string) => void;
 
+  // 10-Stage Scientific Workflow Timeline
+  timeline10Stage: number;
+  setTimeline10Stage: (st: number) => void;
+  advanceTimeline10Stage: (delta: number) => void;
+
+  // Environment, Terrain Constraints & Cyber-Physical Impairments
+  obstaclePreset: ObstaclePreset;
+  setObstaclePreset: (p: ObstaclePreset) => void;
+  poiPreset: POIPreset;
+  setPoiPreset: (p: POIPreset) => void;
+  dutyCyclePreset: DutyCyclePreset;
+  setDutyCyclePreset: (p: DutyCyclePreset) => void;
+  jammerPreset: JammerPreset;
+  setJammerPreset: (p: JammerPreset) => void;
+  pathLossExponent: number;
+  setPathLossExponent: (alpha: number) => void;
+  isEMPBlinking: boolean;
+  triggerEMPBlast: () => void;
+  isManuallyModified: boolean;
+  setIsManuallyModified: (val: boolean) => void;
+
   // Direct Node Interactive Actions
   injectEnergyToNode: (nodeId: number, deltaJoules?: number) => void;
+  injectNewNode: (x: number, y: number, nodeType?: 'normal' | 'advanced' | 'super') => void;
+  removeNode: (nodeId: number) => void;
   relocateNode: (nodeId: number, newX: number, newY: number) => void;
   toggleNodeState: (nodeId: number) => void;
+
+  // Research Dataset & Publication Figure Export Tools
+  exportTopologyCSV: () => void;
+  exportTelemetryJSON: () => void;
+  exportPublicationPNG: () => void;
 
   // Active Tab & Navigation
   activeTab: string;
@@ -449,6 +481,18 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // Event-Driven Timeline States (8 Stages per Round)
   const [currentEventStageIndex, setCurrentEventStageIndex] = useState<number>(0);
   const [currentEventStageLabel, setCurrentEventStageLabel] = useState<string>('Ready to Stream Simulation');
+
+  // 10-Stage Scientific Workflow Timeline State
+  const [timeline10Stage, setTimeline10Stage] = useState<number>(1);
+
+  // Terrain, POI, Duty-Cycle, and Fault Impairments
+  const [obstaclePreset, setObstaclePreset] = useState<ObstaclePreset>('none');
+  const [poiPreset, setPoiPreset] = useState<POIPreset>('none');
+  const [dutyCyclePreset, setDutyCyclePreset] = useState<DutyCyclePreset>('none');
+  const [jammerPreset, setJammerPreset] = useState<JammerPreset>('none');
+  const [pathLossExponent, setPathLossExponent] = useState<number>(2.0);
+  const [isEMPBlinking, setIsEMPBlinking] = useState<boolean>(false);
+  const [isManuallyModified, setIsManuallyModified] = useState<boolean>(false);
 
   // Selected Algorithms
   const [selectedProtocol, setSelectedProtocol] = useState<RoutingProtocol>(activeScenario.routingProtocol);
@@ -1271,6 +1315,7 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   }, []);
 
   const relocateNode = useCallback((nodeId: number, newX: number, newY: number) => {
+    setIsManuallyModified(true);
     setNodes((prev) =>
       prev.map((n) => {
         if (n.node_id === nodeId) {
@@ -1285,7 +1330,52 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     );
   }, [activeScenario]);
 
+  const injectNewNode = useCallback((newX: number, newY: number, nodeType: 'normal' | 'advanced' | 'super' = 'normal') => {
+    setIsManuallyModified(true);
+    soundFX.playClickSound();
+    setNodes((prev) => {
+      const nextId = prev.length > 0 ? Math.max(...prev.map(n => n.node_id)) + 1 : 0;
+      const energyMultiplier = nodeType === 'super' ? 3.0 : nodeType === 'advanced' ? 2.0 : 1.0;
+      const initialE = activeScenario.initialEnergy * energyMultiplier;
+      const sinkDist = Math.sqrt((newX - activeScenario.sinkX) ** 2 + (newY - activeScenario.sinkY) ** 2);
+      
+      const newNode: DynamicNodeState = {
+        seed: selectedSeed,
+        node_id: nextId,
+        x: Math.max(2, Math.min(activeScenario.fieldWidth - 2, newX)),
+        y: Math.max(2, Math.min(activeScenario.fieldHeight - 2, newY)),
+        z: 0,
+        energy: initialE,
+        currentEnergy: initialE,
+        node_type: nodeType,
+        sink_distance: Math.round(sinkDist * 10) / 10,
+        neighbors: 4,
+        coverage_contribution: 0.12,
+        overlap_ratio: 0.45,
+        node_density: 0.8,
+        ann_prediction: 'ACTIVE',
+        final_state: 'ACTIVE',
+        isAlive: true,
+        isClusterHead: false,
+        packetsSent: 0,
+        packetsReceived: 0,
+        packetsForwarded: 0,
+        dissipatedEnergy: 0
+      };
+      return [...prev, newNode];
+    });
+  }, [activeScenario, selectedSeed]);
+
+  const removeNode = useCallback((nodeId: number) => {
+    setIsManuallyModified(true);
+    soundFX.playClickSound();
+    setNodes((prev) => prev.filter(n => n.node_id !== nodeId));
+    setSelectedNode((curr) => curr?.node_id === nodeId ? null : curr);
+    setHoveredNode((curr) => curr?.node_id === nodeId ? null : curr);
+  }, []);
+
   const toggleNodeState = useCallback((nodeId: number) => {
+    setIsManuallyModified(true);
     setNodes((prev) =>
       prev.map((n) => {
         if (n.node_id === nodeId) {
@@ -1298,6 +1388,129 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         return n;
       })
     );
+  }, []);
+
+  // Trigger Regional EMP Shockwave Blast
+  const triggerEMPBlast = useCallback(() => {
+    setIsEMPBlinking(true);
+    soundFX.playAlertTone();
+    // Regional EMP disruption: drains 12% energy of normal/advanced nodes in central 40m radius
+    setNodes((prev) =>
+      prev.map((n) => {
+        const distToCenter = Math.sqrt((n.x - 50) ** 2 + (n.y - 50) ** 2);
+        if (distToCenter < 40 && n.node_type !== 'super') {
+          const newE = Math.max(0, n.currentEnergy - 0.08);
+          return { ...n, currentEnergy: newE, isAlive: newE > 0.001 };
+        }
+        return n;
+      })
+    );
+    setTimeout(() => setIsEMPBlinking(false), 2400);
+  }, []);
+
+  // 10-Stage Scientific Workflow Timeline Advance
+  const advanceTimeline10Stage = useCallback((delta: number) => {
+    setTimeline10Stage((prev) => {
+      const next = Math.max(1, Math.min(10, prev + delta));
+      soundFX.playClickSound();
+      return next;
+    });
+  }, []);
+
+  // CSV Export
+  const exportTopologyCSV = useCallback(() => {
+    soundFX.playClickSound();
+    const headers = ['node_id', 'x', 'y', 'energy_initial', 'current_energy', 'node_type', 'sink_distance', 'neighbors', 'coverage_contribution', 'overlap_ratio', 'ann_prediction', 'final_state', 'is_alive', 'is_cluster_head'];
+    const rows = nodes.map(n => [
+      n.node_id,
+      n.x.toFixed(2),
+      n.y.toFixed(2),
+      n.energy.toFixed(3),
+      n.currentEnergy.toFixed(3),
+      n.node_type,
+      n.sink_distance.toFixed(1),
+      n.neighbors,
+      (n.coverage_contribution * 100).toFixed(2) + '%',
+      (n.overlap_ratio * 100).toFixed(2) + '%',
+      n.ann_prediction,
+      n.final_state,
+      n.isAlive ? 1 : 0,
+      activeClusterHeads.includes(n.node_id) ? 1 : 0
+    ]);
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `neurosense_wsn_topology_N${nodes.length}_seed${selectedSeed}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [nodes, selectedSeed, activeClusterHeads]);
+
+  // JSON Export
+  const exportTelemetryJSON = useCallback(() => {
+    soundFX.playClickSound();
+    const data = {
+      project: 'NeuroSense-WSN Research Lab',
+      engine: 'ANN + PSO-Hybrid Protocol',
+      exportTimestamp: new Date().toISOString(),
+      scenario: {
+        id: activeScenario.id,
+        name: activeScenario.name,
+        fieldDimensions: `${activeScenario.fieldWidth}m x ${activeScenario.fieldHeight}m`,
+        sensorCount: nodes.length,
+        sensingRadius: activeScenario.sensingRadius,
+        commRadius: activeScenario.commRadius,
+        sinkCoordinates: `(${activeScenario.sinkX}, ${activeScenario.sinkY})`,
+        seed: selectedSeed
+      },
+      telemetryMetrics: {
+        coverageRatioPct: telemetry.currentCoveragePct,
+        overlapRedundancyPct: telemetry.currentOverlapPct,
+        blindspotRatioPct: (100 - telemetry.currentCoveragePct),
+        meanMultiplicity: (telemetry.currentOverlapPct / 35 + 1.2).toFixed(2) + 'x',
+        firstNodeDeadRound: telemetry.firstNodeDeadRound,
+        halfNodeDeadRound: telemetry.halfNodeDeadRound,
+        lastNodeDeadRound: telemetry.lastNodeDeadRound,
+        totalPacketsReceived: telemetry.packetsReceived,
+        deliveryRatioPct: telemetry.deliveryRatio,
+        averageResidualEnergyJoules: telemetry.avgResidualEnergy,
+        totalActiveNodes: telemetry.activeNodes,
+        totalSleepingNodes: telemetry.sleepingNodes,
+        totalDeadNodes: telemetry.deadNodes
+      },
+      nodes: nodes.map(n => ({
+        id: n.node_id,
+        x: n.x,
+        y: n.y,
+        initialEnergy: n.energy,
+        currentEnergy: n.currentEnergy,
+        role: activeClusterHeads.includes(n.node_id) ? 'CLUSTER_HEAD' : n.final_state === 'SLEEP' ? 'SLEEP' : 'MEMBER',
+        annClassification: n.ann_prediction,
+        coverageContribution: n.coverage_contribution,
+        overlapRatio: n.overlap_ratio
+      }))
+    };
+    const jsonStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(data, null, 2));
+    const link = document.createElement('a');
+    link.setAttribute('href', jsonStr);
+    link.setAttribute('download', `neurosense_wsn_telemetry_report_round${currentRound}.json`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }, [activeScenario, selectedSeed, telemetry, nodes, activeClusterHeads, currentRound]);
+
+  // Publication PNG Snapshot Export
+  const exportPublicationPNG = useCallback(() => {
+    soundFX.playClickSound();
+    const canvas = document.querySelector('#threejs-canvas-container canvas') as HTMLCanvasElement;
+    if (canvas) {
+      const dataUrl = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.download = `neurosense_wsn_3d_field_snapshot_${Date.now()}.png`;
+      link.href = dataUrl;
+      link.click();
+    }
   }, []);
 
   return (
@@ -1399,9 +1612,31 @@ export const SimulationProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setCurrentEventStageIndex,
         currentEventStageLabel,
         setCurrentEventStageLabel,
+        timeline10Stage,
+        setTimeline10Stage,
+        advanceTimeline10Stage,
+        obstaclePreset,
+        setObstaclePreset,
+        poiPreset,
+        setPoiPreset,
+        dutyCyclePreset,
+        setDutyCyclePreset,
+        jammerPreset,
+        setJammerPreset,
+        pathLossExponent,
+        setPathLossExponent,
+        isEMPBlinking,
+        triggerEMPBlast,
+        isManuallyModified,
+        setIsManuallyModified,
         injectEnergyToNode,
+        injectNewNode,
+        removeNode,
         relocateNode,
         toggleNodeState,
+        exportTopologyCSV,
+        exportTelemetryJSON,
+        exportPublicationPNG,
         activeTab,
         setActiveTab
       }}
