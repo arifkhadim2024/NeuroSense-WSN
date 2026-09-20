@@ -27,3 +27,5 @@ yarn-error.log*
 
 # Large backup archives
 *.tar.gz
+_old_web_archive/
+*.log

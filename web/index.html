@@ -1,14 +1,789 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="ANN-Based Coverage Optimization and PSO-Hybrid Energy-Efficient Routing in Wireless Sensor Networks" />
-    <title>ANN-Based Coverage Optimization &amp; PSO-Hybrid WSN</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NeuroSense-WSN v2: ANN-Powered Energy-Efficient WSN Laboratory</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- ================= APPLICATION HEADER ================= -->
+  <header class="app-header">
+    <div class="brand" onclick="location.reload()">
+      <div class="brand-mark">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+          <polyline points="2 17 12 22 22 17"></polyline>
+          <polyline points="2 12 12 17 22 12"></polyline>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-title">NEUROSENSE-WSN v2</div>
+        <span class="brand-sub">ANN Sleep Scheduling & Multi-Hop Routing</span>
+      </div>
+      <span class="brand-badge">RESEARCH WORKBENCH</span>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="nav-tabs">
+      <button class="nav-tab-btn active" data-tab="3d-sim">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle></svg>
+        <span>3D Field Topology</span>
+      </button>
+      <button class="nav-tab-btn" data-tab="2d-grid">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg>
+        <span>Voronoi & Multiplicity</span>
+      </button>
+      <button class="nav-tab-btn" data-tab="routing">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h20M15 5l7 7-7 7"></path></svg>
+        <span>Protocol Benchmarks</span>
+      </button>
+      <button class="nav-tab-btn" data-tab="ann-lab">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"></circle><circle cx="18" cy="6" r="3"></circle><circle cx="12" cy="18" r="3"></circle><line x1="6" y1="6" x2="12" y2="18"></line><line x1="18" y1="6" x2="12" y2="18"></line></svg>
+        <span>ANN Laboratory</span>
+      </button>
+      <button class="nav-tab-btn" data-tab="code">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+        <span>Algorithm Source</span>
+      </button>
+      <button class="nav-tab-btn" data-tab="theory">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"></path></svg>
+        <span>Formulation & Theory</span>
+      </button>
+    </nav>
+
+    <div class="header-actions">
+      <!-- Audio Feedback Synthesizer Controls -->
+      <button id="btn-audio-toggle" class="btn-sound-toggle" title="Toggle Synthesized Sound Effects">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+        <span id="audio-text">Audio Feedback</span>
+      </button>
+      <div class="volume-control" title="Audio Volume">
+        <input type="range" id="slider-volume" min="0" max="100" value="25" />
+      </div>
+
+      <!-- Export Dropdown -->
+      <div class="export-dropdown-wrapper" style="position: relative;">
+        <button id="btn-export-menu" class="btn-secondary" style="display: flex; align-items: center; gap: 0.35rem;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          <span>Export Data</span>
+        </button>
+        <div class="glass-3d-tooltip" id="export-dropdown-menu" style="display: none; position: absolute; right: 0; top: 38px; pointer-events: auto;">
+          <div style="cursor: pointer; padding: 0.35rem 0;" id="btn-export-csv">Topology Dataset (.CSV)</div>
+          <div style="cursor: pointer; padding: 0.35rem 0;" id="btn-export-json">Telemetry Metrics (.JSON)</div>
+          <div style="cursor: pointer; padding: 0.35rem 0;" id="btn-export-snapshot">Publication Figure (.PNG)</div>
+        </div>
+      </div>
+
+      <div class="live-indicator">
+        <span class="live-dot"></span>
+        <span>ENGINE ONLINE</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ================= MAIN DASHBOARD CONTAINER ================= -->
+  <main class="app-container">
+
+    <!-- Top Live Dynamic HUD Metrics Banner -->
+    <section class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label"><span>Coverage Ratio (CR)</span><span class="metric-tag">Grid 1.0m</span></div>
+        <div class="metric-value" id="hud-coverage">94.5%</div>
+        <div class="metric-delta"><span id="hud-coverage-delta">Baseline deployment</span></div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-label"><span>Overlap Redundancy (OR)</span><span class="metric-tag">Multi-Sensor</span></div>
+        <div class="metric-value" id="hud-overlap">76.4%</div>
+        <div class="metric-delta">Redundant sensing zone</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-label"><span>Blindspot Ratio (HR)</span><span class="metric-tag">Field Holes</span></div>
+        <div class="metric-value" id="hud-holes">5.5%</div>
+        <div class="metric-delta">Unmonitored territory</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-label"><span>Mean Multiplicity (K)</span><span class="metric-tag">Redundancy</span></div>
+        <div class="metric-value" id="hud-multiplicity">3.18x</div>
+        <div class="metric-delta">Avg active sensors per point</div>
+      </div>
+
+      <div class="metric-card">
+        <div class="metric-label"><span>Packets at Sink</span><span class="metric-tag">Delivered</span></div>
+        <div class="metric-value" id="hud-packets" style="color: var(--emerald);">0</div>
+        <div class="metric-delta">Cumulative sink throughput</div>
+      </div>
+    </section>
+
+    <!-- ================= VIEW 1: 3D VIRTUAL SIMULATION ================= -->
+    <section class="tab-view active" id="view-3d-sim">
+      <div class="sim-workspace-grid">
+        <div class="viewport-container">
+          <div id="threejs-canvas-container"></div>
+
+          <!-- Floating Spatial Interaction & Layer Toolbar -->
+          <div class="viewport-toolbar">
+            <button class="tool-btn active" id="btn-tool-inspect"><span>Inspect</span></button>
+            <button class="tool-btn" id="btn-tool-relocate"><span>Relocate</span></button>
+            <button class="tool-btn" id="btn-tool-inject"><span>Inject</span></button>
+            <button class="tool-btn" id="btn-tool-delete"><span>Remove</span></button>
+            <div class="toolbar-divider"></div>
+            <label class="layer-toggle"><input type="checkbox" id="chk-layer-links" checked /> Links</label>
+            <label class="layer-toggle"><input type="checkbox" id="chk-layer-arrows" checked /> Arrows</label>
+            <label class="layer-toggle"><input type="checkbox" id="chk-layer-packets" checked /> Packets</label>
+            <label class="layer-toggle"><input type="checkbox" id="chk-layer-disks" checked /> Disks</label>
+            <label class="layer-toggle"><input type="checkbox" id="chk-layer-labels" checked /> Labels</label>
+          </div>
+
+          <!-- Floating Debug HUD Overlay (Toggle with Key D) -->
+          <div id="player-debug-overlay" class="glass-3d-tooltip" style="display: none; position: absolute; top: 52px; left: 12px; z-index: 50; min-width: 240px; font-family: var(--font-mono); font-size: 0.72rem; line-height: 1.5;"></div>
+
+          <!-- Top Viewport Badge -->
+          <div class="viewport-overlay-top">
+            <div class="viewport-chip">100m × 100m FIELD • SINK (50, 150)</div>
+            <div class="viewport-chip">60 FPS WEBGL</div>
+          </div>
+
+          <!-- Permanent 3D Viewport Legend -->
+          <div class="viewport-legend">
+            <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 0.15rem;">TOPOLOGY LEGEND</div>
+            <div class="legend-item"><span class="legend-dot" style="background: var(--cyan);"></span><span>Active Node (Cyan)</span></div>
+            <div class="legend-item"><span class="legend-dot" style="background: var(--text-muted);"></span><span>Sleep Node (Grey)</span></div>
+            <div class="legend-item"><span class="legend-dot" style="background: var(--rose);"></span><span>Dead Node (Red + X)</span></div>
+            <div class="legend-item"><span class="legend-dot" style="background: var(--amber);"></span><span>Cluster Head (Gold + CH)</span></div>
+            <div class="legend-item"><span class="legend-dot" style="background: #FFF; border: 1px solid var(--amber);"></span><span>Chain Leader (White)</span></div>
+            <div class="legend-item"><span class="legend-dot" style="background: var(--emerald);"></span><span>Base Station Sink (Green)</span></div>
+            <div class="legend-item"><span style="width: 12px; height: 2px; background: var(--cyan); display: inline-block;"></span><span>Member Link (Cyan)</span></div>
+            <div class="legend-item"><span style="width: 12px; height: 2px; background: var(--amber); display: inline-block;"></span><span>Chain Hop (Amber)</span></div>
+            <div class="legend-item"><span style="width: 12px; height: 2px; background: var(--emerald); display: inline-block;"></span><span>Sink Relay (Green)</span></div>
+          </div>
+
+          <!-- Interactive 3D Node Tooltip -->
+          <div id="node-3d-tooltip" class="glass-3d-tooltip" style="display: none;">
+            <div class="tt-header">
+              <span class="tt-title" id="tt-node-id">Sensor Node #0</span>
+              <span class="tt-badge" id="tt-node-role">Member</span>
+            </div>
+            <div class="tt-body">
+              <div class="tt-row"><span>Position:</span> <b id="tt-node-pos">(0.0, 0.0)</b></div>
+              <div class="tt-row"><span>Battery:</span> <b id="tt-node-battery">0.500 J</b></div>
+              <div class="tt-row"><span>Dist to Sink:</span> <b id="tt-node-dist">0.0 m</b></div>
+              <div class="tt-row"><span>Sensing:</span> <b id="tt-node-rs">Rs = 15m</b></div>
+            </div>
+          </div>
+
+          <!-- Bottom Camera Controls -->
+          <div class="viewport-controls-bar">
+            <button class="btn-ctrl active" id="btn-cam-iso">Stable View</button>
+            <button class="btn-ctrl" id="btn-cam-top">Top-Down</button>
+            <button class="btn-ctrl" id="btn-cam-sink">Sink View</button>
+            <button class="btn-ctrl" id="btn-cam-fit">Fit Center</button>
+            <button class="btn-ctrl" id="btn-toggle-orbit">360° Motion</button>
+            <button class="btn-ctrl active" id="btn-toggle-bubbles">Disk Bubbles</button>
+          </div>
+        </div>
+
+        <!-- Right Control Sidebar -->
+        <aside class="sim-sidebar">
+          <div class="sidebar-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            <span>Simulation Parameters</span>
+          </div>
+
+          <div class="control-group">
+            <div class="control-label"><span>Deployment Scenario</span></div>
+            <select id="select-preset" class="form-select">
+              <option value="s1">Scenario 1: Sparse Grid (N=30, Rs=10m)</option>
+              <option value="s2" selected>Scenario 2: Standard Benchmark (N=50, Rs=15m)</option>
+              <option value="s3">Scenario 3: High Density Cluster (N=80, Rs=12m)</option>
+              <option value="s4">Scenario 4: Extended Network Array (N=100, Rs=15m)</option>
+            </select>
+          </div>
+
+          <div class="control-group">
+            <div class="control-label"><span>Simulation Max Rounds</span></div>
+            <select id="select-max-rounds" class="form-select">
+              <option value="500">500 Rounds</option>
+              <option value="1000">1000 Rounds</option>
+              <option value="2000">2000 Rounds</option>
+              <option value="3000" selected>3000 Rounds (Full Lifetime)</option>
+            </select>
+          </div>
+
+          <div class="control-group">
+            <div class="control-label"><span>Obstacles & Terrain</span></div>
+            <select id="select-obstacle-preset" class="form-select">
+              <option value="none" selected>None (Open 100m × 100m)</option>
+              <option value="central-lake">Central Hazard / Lake (40–60m)</option>
+              <option value="dual-walls">Dual Structural Facility Walls</option>
+              <option value="corner-zones">Perimeter Water Basins</option>
+            </select>
+          </div>
+
+          <div class="control-group">
+            <div class="control-label">
+              <span>Sensor Nodes (N)</span>
+              <input type="number" id="num-nodes-input" class="form-input-number" min="10" max="150" value="50" step="5" />
+            </div>
+            <input type="range" id="slider-nodes" min="15" max="150" value="50" step="5" />
+          </div>
+
+          <div class="control-group">
+            <div class="control-label">
+              <span>Sensing Radius (Rs)</span>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <input type="number" id="num-rs-input" class="form-input-number" min="5" max="30" value="15" step="1" />
+                <span style="font-size: 0.72rem; color: var(--text-muted);">m</span>
+              </div>
+            </div>
+            <input type="range" id="slider-rs" min="8" max="30" value="15" step="1" />
+          </div>
+
+          <div class="control-group">
+            <div class="control-label">
+              <span>Communication Radius (Rc)</span>
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <input type="number" id="num-rc-input" class="form-input-number" min="15" max="60" value="30" step="1" />
+                <span style="font-size: 0.72rem; color: var(--text-muted);">m</span>
+              </div>
+            </div>
+            <input type="range" id="slider-rc" min="15" max="60" value="30" step="1" />
+          </div>
+
+          <div class="control-group">
+            <div class="control-label">
+              <span>Simulation Seed</span>
+              <input type="number" id="num-seed-input" class="form-input-number" min="1" max="99999" value="42" step="1" />
+            </div>
+          </div>
+
+          <div class="step-label" style="color: #FDA4AF;">FAULT INJECTION & IMPAIRMENTS</div>
+          <div class="control-group">
+            <div class="control-label">
+              <span>RF Jammer</span>
+              <span id="jammer-badge" style="color: var(--cyan); font-size: 0.7rem;">Off</span>
+            </div>
+            <select id="select-jammer-preset" class="form-select">
+              <option value="none" selected>None (Clean Spectrum)</option>
+              <option value="central-jammer">Central High-Power Jammer (R=22m)</option>
+              <option value="dual-jammers">Dual Cross-Corridor Jammers</option>
+            </select>
+          </div>
+
+          <div class="control-group">
+            <div class="control-label">
+              <span>Path Loss Exponent (α)</span>
+              <input type="number" id="num-path-loss-input" class="form-input-number" min="2.0" max="4.0" value="2.0" step="0.1" />
+            </div>
+            <input type="range" id="slider-path-loss" min="2.0" max="4.0" value="2.0" step="0.1" />
+          </div>
+
+          <button class="btn-secondary btn-emp-blast" id="btn-trigger-emp">
+            <span>Trigger Regional EMP Blast</span>
+          </button>
+
+          <div class="step-label">PHASE 1: SLEEP SCHEDULING</div>
+          <button class="btn-primary-glow" id="btn-run-optimization">
+            <span>Execute ANN Sleep Scheduling</span>
+          </button>
+
+          <div class="step-label" style="color: var(--emerald);">PHASE 2: DATA ROUTING</div>
+          <div class="control-group">
+            <select id="select-routing-proto" class="form-select">
+              <option value="ann_pso_hybrid" selected>ANN + PSO-Hybrid (Proposed)</option>
+              <option value="pso_hybrid">PSO-Hybrid Protocol</option>
+              <option value="hybrid">Hybrid LEACH-PEGASIS</option>
+              <option value="pegasis">PEGASIS Protocol (Chain)</option>
+              <option value="leach">LEACH Protocol (Cluster)</option>
+            </select>
+          </div>
+
+          <button class="btn-primary-glow btn-routing" id="btn-start-routing">
+            <span>Start Multi-Hop Routing</span>
+          </button>
+
+          <button class="btn-secondary" id="btn-compare-all" style="border-color: rgba(56, 189, 248, 0.4); color: var(--cyan);">
+            <span>Compare All 5 Protocols</span>
+          </button>
+
+          <button class="btn-secondary" id="btn-reset-deployment">
+            <span>Reset Deployment</span>
+          </button>
+        </aside>
+      </div>
+
+      <!-- Playback Control Bar & Scrubber -->
+      <div class="playback-bar">
+        <div class="playback-main-row">
+          <div class="playback-buttons">
+            <button class="btn-player btn-player-play" id="btn-play-pause">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span>Play</span>
+            </button>
+            <button class="btn-player" id="btn-step-bwd"><span>◀ Step</span></button>
+            <button class="btn-player" id="btn-step-fwd"><span>Step ▶</span></button>
+            <button class="btn-player" id="btn-stop-reset"><span>Stop</span></button>
+          </div>
+
+          <div class="timeline-slider-wrap">
+            <span id="player-status-label" style="font-size: 0.75rem; font-family: var(--font-mono); color: var(--cyan); white-space: nowrap;">Round 1 / 3000 — IDLE</span>
+            <input type="range" id="timeline-slider" min="1" max="3000" value="1" />
+          </div>
+
+          <div class="speed-group">
+            <button class="btn-speed" data-speed="0.25">0.25x</button>
+            <button class="btn-speed" data-speed="0.5">0.5x</button>
+            <button class="btn-speed active" data-speed="1.0">1x</button>
+            <button class="btn-speed" data-speed="2.0">2x</button>
+            <button class="btn-speed" data-speed="4.0">4x</button>
+            <button class="btn-speed" data-speed="8.0">8x</button>
+            <button class="btn-speed" data-speed="16.0">16x</button>
+          </div>
+        </div>
+
+        <!-- Live Telemetry Strip -->
+        <div class="telemetry-strip">
+          <div class="telemetry-item">
+            <span class="telemetry-lbl">Round Progress</span>
+            <span class="telemetry-val" id="telemetry-round" style="color: var(--cyan);">Round 0 / 3000</span>
+          </div>
+          <div class="telemetry-item">
+            <span class="telemetry-lbl">Node States</span>
+            <span class="telemetry-val" id="telemetry-alive" style="color: var(--emerald);">50/50 (50 act, 0 slp, 0 dead)</span>
+          </div>
+          <div class="telemetry-item">
+            <span class="telemetry-lbl">Residual Battery</span>
+            <span class="telemetry-val" id="telemetry-energy" style="color: var(--amber);">25.0000 J</span>
+          </div>
+          <div class="telemetry-item">
+            <span class="telemetry-lbl">Energy Spent / Round</span>
+            <span class="telemetry-val" id="telemetry-energy-round">0.0000 J</span>
+          </div>
+          <div class="telemetry-item">
+            <span class="telemetry-lbl">Packets to Sink</span>
+            <span class="telemetry-val" id="telemetry-packets" style="color: var(--purple);">0 pkts (0 this round)</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= VIEW 2: 2D HEATMAP & VORONOI ================= -->
+    <section class="tab-view" id="view-2d-grid">
+      <div class="section-head">
+        <h2 class="section-title">Coverage Multiplicity Matrix & Voronoi Partitions</h2>
+        <p class="section-subtitle">Spatial sensing density evaluation, k-coverage overlap analysis, and convex polygon area extraction for ANN scheduling.</p>
+      </div>
+
+      <!-- Live Spatial Telemetry Strip -->
+      <div class="telemetry-strip" style="margin-bottom: 0.85rem;">
+        <div class="telemetry-item">
+          <span class="telemetry-lbl">Effective Coverage (CR)</span>
+          <span class="telemetry-val" id="voronoi-stat-coverage" style="color: var(--cyan);">94.5% (9,450 m²)</span>
+        </div>
+        <div class="telemetry-item">
+          <span class="telemetry-lbl">Spatial Multiplicity (M)</span>
+          <span class="telemetry-val" id="voronoi-stat-multiplicity" style="color: var(--emerald);">1.84× Avg</span>
+        </div>
+        <div class="telemetry-item">
+          <span class="telemetry-lbl">Redundant Overlap (OR)</span>
+          <span class="telemetry-val" id="voronoi-stat-overlap" style="color: var(--amber);">42.1% (4,210 m²)</span>
+        </div>
+        <div class="telemetry-item">
+          <span class="telemetry-lbl">Unmonitored Blindspots (BR)</span>
+          <span class="telemetry-val" id="voronoi-stat-blindspots" style="color: var(--rose);">5.5% (550 m²)</span>
+        </div>
+        <div class="telemetry-item">
+          <span class="telemetry-lbl">Voronoi Tessellation</span>
+          <span class="telemetry-val" id="voronoi-stat-cells" style="color: var(--purple);">50 Cells (200 m² avg)</span>
+        </div>
+      </div>
+
+      <!-- Interactive Voronoi & Multiplicity Control Bar -->
+      <div style="display: flex; gap: 0.75rem; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; background: rgba(15, 23, 42, 0.7); padding: 0.5rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+        <div style="display: flex; gap: 0.6rem; align-items: center;">
+          <button class="btn btn-primary" id="btn-voronoi-run-phase1" style="font-size: 0.76rem; padding: 0.35rem 0.75rem;">
+            <span>⚡ Run ANN Sleep Scheduling</span>
+          </button>
+          <button class="btn btn-secondary" id="btn-voronoi-redeploy" style="font-size: 0.76rem; padding: 0.35rem 0.75rem;">
+            <span>🔄 Re-Deploy Random Seed</span>
+          </button>
+        </div>
+        <div id="heatmap-hover-info" style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--cyan);">
+          Hover over map to inspect local multiplicity & Voronoi areas
+        </div>
+      </div>
+
+      <div class="dual-canvas-grid">
+        <div class="canvas-card">
+          <div class="card-heading">
+            <span>Coverage Multiplicity Heatmap</span>
+            <span class="card-caption">Grid Resolution: 1.0m</span>
+          </div>
+          <p class="card-description">Dark = Blindspot (0x) • Cyan = 1x Ideal Coverage • Emerald = 2x Overlap • Amber = 3x+ High Overlap</p>
+          <canvas id="heatmap-canvas" class="display-canvas" width="400" height="380"></canvas>
+        </div>
+
+        <div class="canvas-card">
+          <div class="card-heading">
+            <span>Bounded Voronoi Cell Partition</span>
+            <span class="card-caption">Planar Tessellation</span>
+          </div>
+          <p class="card-description">Convex polygon boundary partitions identifying localized territory density.</p>
+          <canvas id="voronoi-canvas" class="display-canvas" width="400" height="380"></canvas>
+        </div>
+      </div>
+
+      <!-- Analytical Output & Mathematical Interpretation Card -->
+      <div class="canvas-card" style="margin-top: 0.85rem;">
+        <div class="card-heading">
+          <span>Scientific Purpose & Analytical Interpretation</span>
+          <span class="card-caption">Feature Extraction for Sleep Scheduling</span>
+        </div>
+        <div style="font-size: 0.78rem; color: var(--text-secondary); line-height: 1.5; display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem;">
+          <div>
+            <b style="color: var(--cyan);">1. Multiplicity Heatmap (Output: k-Coverage & Redundancy Index)</b><br/>
+            Evaluates discrete 1.0m grid points across the 100m × 100m field. Points covered by &ge; 2 sensors (<span style="color: var(--emerald);">Emerald</span> / <span style="color: var(--amber);">Amber</span>) represent redundant sensing capacity where sensor nodes can be put to <b>SLEEP</b> to conserve battery without creating coverage holes.
+          </div>
+          <div>
+            <b style="color: var(--purple);">2. Bounded Voronoi Tessellation (Output: Territorial Area Feature A_i)</b><br/>
+            Computes each sensor's convex polygon partition bounded to [0, 100]². Voronoi cell area (A_i) is fed directly into the <b>ANN Multi-Layer Perceptron</b>. Nodes with small interior cells and high overlap are scheduled to sleep, while boundary/large-cell nodes remain active.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= VIEW 3: ROUTING & BENCHMARKS ================= -->
+    <section class="tab-view" id="view-routing">
+      <div class="section-head">
+        <h2 class="section-title">Protocol Benchmark & Lifecycle Telemetry</h2>
+        <p class="section-subtitle">Multi-round operational lifetime, residual energy decay, and multi-objective radar comparison.</p>
+      </div>
+
+      <!-- Quick Simulation Control Bar directly on Protocol Benchmarks Tab -->
+      <div style="display: flex; gap: 0.75rem; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; background: rgba(15, 23, 42, 0.7); padding: 0.5rem 0.85rem; border-radius: var(--radius-md); border: 1px solid var(--border-color); flex-wrap: wrap;">
+        <div style="display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;">
+          <select id="select-benchmark-proto" class="form-select" style="max-width: 240px; font-size: 0.76rem; padding: 0.35rem 0.6rem;">
+            <option value="ann_pso_hybrid" selected>ANN + PSO-Hybrid (Proposed)</option>
+            <option value="leach">LEACH Protocol (Cluster)</option>
+            <option value="pegasis">PEGASIS Protocol (Chain)</option>
+            <option value="hybrid">Hybrid LEACH-PEGASIS</option>
+            <option value="pso_hybrid">PSO-Hybrid Protocol</option>
+          </select>
+          <button class="btn btn-primary" id="btn-benchmark-run-selected" style="font-size: 0.76rem; padding: 0.35rem 0.75rem;">
+            <span>▶ Run Selected Protocol</span>
+          </button>
+          <button class="btn btn-secondary" id="btn-benchmark-compare-all" style="font-size: 0.76rem; padding: 0.35rem 0.75rem; border-color: rgba(56, 189, 248, 0.4); color: var(--cyan);">
+            <span>🚀 Compare All 5 Protocols</span>
+          </button>
+          <button class="btn btn-secondary" id="btn-benchmark-reset" style="font-size: 0.76rem; padding: 0.35rem 0.75rem;">
+            <span>🔄 Clear History</span>
+          </button>
+        </div>
+        <div id="benchmark-active-proto-badge" style="font-family: var(--font-mono); font-size: 0.75rem; color: var(--emerald);">
+          Active: ANN + PSO-HYBRID
+        </div>
+      </div>
+
+      <!-- 5 Progressive Telemetry Charts & Radar -->
+      <div class="charts-grid-3">
+        <div class="canvas-card" style="min-height: 270px;">
+          <div class="card-heading"><span>1. Active & Alive Nodes vs. Rounds</span></div>
+          <div style="flex: 1; position: relative;"><canvas id="chart-lifetime"></canvas></div>
+        </div>
+
+        <div class="canvas-card" style="min-height: 270px;">
+          <div class="card-heading"><span>2. Residual Energy Decay (J)</span></div>
+          <div style="flex: 1; position: relative;"><canvas id="chart-energy"></canvas></div>
+        </div>
+
+        <div class="canvas-card" style="min-height: 270px;">
+          <div class="card-heading"><span>3. Field Coverage (%) vs. Rounds</span></div>
+          <div style="flex: 1; position: relative;"><canvas id="chart-coverage"></canvas></div>
+        </div>
+      </div>
+
+      <div class="charts-grid-3" style="margin-top: 0.5rem;">
+        <div class="canvas-card" style="min-height: 270px;">
+          <div class="card-heading"><span>4. Cumulative Packets to Sink</span></div>
+          <div style="flex: 1; position: relative;"><canvas id="chart-packets"></canvas></div>
+        </div>
+
+        <div class="canvas-card" style="min-height: 270px;">
+          <div class="card-heading"><span>5. Energy Spent / Round (J)</span></div>
+          <div style="flex: 1; position: relative;"><canvas id="chart-energy-spent"></canvas></div>
+        </div>
+
+        <div class="canvas-card" style="min-height: 270px;">
+          <div class="card-heading"><span>Multi-Objective Radar Evaluation</span></div>
+          <div style="flex: 1; position: relative;"><canvas id="chart-radar"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Scientific Metric Definitions -->
+      <div class="canvas-card" style="margin-top: 0.5rem; background: rgba(15, 23, 42, 0.6); padding: 0.75rem 1rem;">
+        <div style="font-size: 0.75rem; color: var(--text-secondary); display: flex; flex-wrap: wrap; gap: 1.5rem;">
+          <div><b style="color: var(--cyan);">Alive:</b> Residual battery &gt; 0 J (Active + Sleeping)</div>
+          <div><b style="color: var(--emerald);">Active:</b> Alive and participating in sensing/routing</div>
+          <div><b style="color: var(--amber);">FND (First Node Dead):</b> First round any sensor reaches 0 J</div>
+          <div><b style="color: var(--purple);">HND (Half Nodes Dead):</b> First round alive nodes &le; 50%</div>
+          <div><b style="color: var(--rose);">LND (Last Node Dead):</b> First round alive nodes = 0</div>
+        </div>
+      </div>
+
+      <!-- Live Simulation Session Outputs Table -->
+      <div class="canvas-card" style="margin-top: 0.5rem; border: 1px solid rgba(16, 185, 129, 0.35); box-shadow: 0 0 15px rgba(16, 185, 129, 0.08);">
+        <div class="card-heading" style="margin-bottom: 0.5rem;">
+          <span style="color: var(--emerald); display: flex; align-items: center; gap: 6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            Live Simulation Session Outputs (Your Exact Computed Runs)
+          </span>
+          <span class="card-caption" id="live-session-summary">0 runs recorded in current session</span>
+        </div>
+        <table class="glass-table">
+          <thead>
+            <tr>
+              <th>Protocol</th>
+              <th>Simulated Rounds</th>
+              <th>FND (First Node Dead)</th>
+              <th>HND (50% Alive)</th>
+              <th>Packets Delivered</th>
+              <th>Residual Energy</th>
+              <th>Packets / Joule</th>
+              <th>Simulation Time</th>
+              <th>Empirical Assessment</th>
+            </tr>
+          </thead>
+          <tbody id="live-session-table-body">
+            <tr><td colspan="9" style="text-align: center; color: var(--text-secondary); padding: 1.25rem;">No live simulations computed in this session yet. Click <b>"Start Multi-Hop Routing"</b> or <b>"Compare All 5 Protocols"</b> to populate live outputs.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Protocol Benchmark Table -->
+      <div class="canvas-card" style="margin-top: 0.5rem;">
+        <div class="card-heading" style="margin-bottom: 0.5rem;">
+          <span>Empirical Protocol Benchmark Table (Mean ± Std over 5 Seeds)</span>
+          <span class="card-caption" id="protocol-config-summary">N=50, Rs=15m, α=2.0, seeds=5, rounds up to 3000</span>
+        </div>
+        <table class="glass-table">
+          <thead>
+            <tr>
+              <th>Protocol</th>
+              <th>FND</th>
+              <th>HND (50% Alive)</th>
+              <th>LND (All Dead)</th>
+              <th>Total Packets</th>
+              <th>Packets / Joule</th>
+              <th>Runtime</th>
+              <th>Scientific Assessment</th>
+            </tr>
+          </thead>
+          <tbody id="protocol-table-body">
+            <tr><td colspan="8">Loading benchmark data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Phase 1 Ablation Table -->
+      <div class="canvas-card" style="margin-top: 0.5rem;">
+        <div class="card-heading" style="margin-bottom: 0.5rem;">
+          <span>Phase 1 Sleep Scheduling Ablation Table (Through PSO-Hybrid)</span>
+          <span class="card-caption" id="ablation-config-summary">N=50, Rs=15m, α=2.0, seeds=5, rounds up to 3000</span>
+        </div>
+        <table class="glass-table">
+          <thead>
+            <tr>
+              <th>Method</th>
+              <th>Active Nodes</th>
+              <th>Coverage (CR)</th>
+              <th>Overlap (OR)</th>
+              <th>Downstream FND</th>
+              <th>Downstream HND</th>
+              <th>Packets / Joule</th>
+              <th>Runtime</th>
+              <th>Scientific Assessment</th>
+            </tr>
+          </thead>
+          <tbody id="ablation-table-body">
+            <tr><td colspan="9">Loading ablation data...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ================= VIEW 4: ANN LABORATORY ================= -->
+    <section class="tab-view" id="view-ann-lab">
+      <div class="section-head">
+        <h2 class="section-title">Artificial Neural Network Architecture & Inference Engine</h2>
+        <p class="section-subtitle">Real synaptic connection weights from ann_weights.json, forward pass activation, and what-if analysis.</p>
+      </div>
+
+      <div class="ann-lab-grid">
+        <div class="canvas-card ann-diagram-card">
+          <div class="card-heading">
+            <span>Neural Network Topology (8 → 16 → 8 → 1)</span>
+            <span class="card-caption">Cyan = Positive | Rose = Negative Weight</span>
+          </div>
+          <canvas id="ann-canvas" width="600" height="400"></canvas>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 0.85rem;">
+          <div class="canvas-card">
+            <div class="card-heading"><span>Honest Evaluation (Unseen Test Seeds)</span></div>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 0.4rem;">
+              <div class="cm-cell"><b id="ann-acc-val">79.8%</b><span>Accuracy</span></div>
+              <div class="cm-cell"><b id="ann-f1-val">0.8034</b><span>F1-Score</span></div>
+              <div class="cm-cell"><b id="ann-auc-val">0.8580</b><span>ROC-AUC</span></div>
+            </div>
+
+            <div class="confusion-matrix-grid">
+              <div class="cm-cell"><b id="cm-tn">929</b><span>True Negative (Sleep)</span></div>
+              <div class="cm-cell"><b id="cm-fp">149</b><span>False Positive</span></div>
+              <div class="cm-cell"><b id="cm-fn">341</b><span>False Negative</span></div>
+              <div class="cm-cell"><b id="cm-tp">1001</b><span>True Positive (Active)</span></div>
+            </div>
+
+            <div style="margin-top: 0.6rem; font-size: 0.75rem; color: var(--emerald); text-align: center;">
+              <span id="speedup-factor" style="font-size: 1.2rem; font-weight: 700;">8.4x Speedup</span>
+              <div id="speedup-text" style="color: var(--text-muted); font-size: 0.7rem;">Oracle: 69ms | ANN: 8ms</div>
+            </div>
+          </div>
+
+          <div class="canvas-card">
+            <div class="card-heading">
+              <span>Interactive "What-If" Inference</span>
+              <span id="whatif-state-val" class="status-cyan">ACTIVE (1)</span>
+            </div>
+            <div style="font-size: 0.72rem; color: var(--text-secondary); margin-bottom: 0.35rem;">
+              Adjust node features or select a scenario preset to evaluate live forward pass activation:
+            </div>
+            
+            <!-- Quick Preset Scenarios -->
+            <div style="display: flex; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.5rem;">
+              <button class="btn btn-secondary" id="wif-preset-redundant" style="font-size: 0.7rem; padding: 0.2rem 0.45rem;">🔴 High Overlap (Sleep)</button>
+              <button class="btn btn-secondary" id="wif-preset-boundary" style="font-size: 0.7rem; padding: 0.2rem 0.45rem;">🟢 Boundary Node (Active)</button>
+              <button class="btn btn-secondary" id="wif-preset-lowbattery" style="font-size: 0.7rem; padding: 0.2rem 0.45rem;">🟡 Low Battery (Sleep)</button>
+            </div>
+
+            <div id="whatif-sliders-container" style="display: flex; flex-direction: column; gap: 0.35rem;"></div>
+            
+            <div style="margin-top: 0.4rem; display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem;">
+              <span>Predicted P(ACTIVE):</span>
+              <b id="whatif-prob-val" style="color: var(--cyan); font-family: var(--font-mono); font-size: 1.05rem;">88.4%</b>
+            </div>
+
+            <div id="whatif-explanation-text" style="margin-top: 0.45rem; font-size: 0.72rem; line-height: 1.4; padding: 0.4rem 0.6rem; border-radius: 4px; background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-color);">
+              <span style="color: var(--emerald);"><b>ACTIVE (1)</b>: Critical coverage contribution. Sensor kept awake to prevent sensing holes.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scientific Purpose & Architectural Breakdown Card -->
+      <div class="canvas-card" style="margin-top: 0.85rem;">
+        <div class="card-heading">
+          <span>Scientific Purpose: Why Use an Artificial Neural Network in WSNs?</span>
+          <span class="card-caption">Decentralized O(1) Inference vs NP-Hard Greedy Optimization</span>
+        </div>
+        <div style="font-size: 0.78rem; color: var(--text-secondary); line-height: 1.55; display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-top: 0.4rem;">
+          <div>
+            <b style="color: var(--cyan);">1. The Computational Bottleneck in WSN Sleep Scheduling</b><br/>
+            Finding the optimal subset of sensor nodes to put to sleep while guaranteeing 100% field coverage is an <b>NP-hard Set Cover problem</b>. The exact Greedy Oracle takes <b>~69.17 ms</b> per scheduling cycle in Python, which is too computationally expensive and battery-draining to run on low-power embedded microcontrollers in real time.
+          </div>
+          <div>
+            <b style="color: var(--emerald);">2. The Neural Multi-Layer Perceptron (8 → 16 → 8 → 1)</b><br/>
+            The ANN is trained offline on oracle decisions using 8 spatial and energy features ($E_{res}, d_{sink}, k_{nbr}, CR_{uniq}, OR, \rho_{loc}, d_{act}, obs$). Online forward pass executes in only <b>~8.28 ms (8.4× speedup)</b> with <b>79.8% accuracy</b> and an F1-Score of <b>0.8034</b>, paired with a deterministic <b>Coverage Guard</b> safety net.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= VIEW 5: CODE EXPLORER ================= -->
+    <section class="tab-view" id="view-code">
+      <div class="section-head">
+        <h2 class="section-title">Source Code Architecture</h2>
+        <p class="section-subtitle">Modular Python simulation modules implementing first-order radio dynamics, coverage, ANN, and PSO.</p>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 220px 1fr; gap: 1rem;">
+        <div class="canvas-card" style="padding: 0.5rem;">
+          <div style="font-size: 0.72rem; color: var(--text-muted); padding: 0.35rem 0.5rem;">CORE MODULES (src/)</div>
+          <div class="file-item active" data-file="config.py" style="padding: 0.4rem 0.6rem; cursor: pointer; border-radius: 4px; font-size: 0.78rem;">config.py</div>
+          <div class="file-item" data-file="network.py" style="padding: 0.4rem 0.6rem; cursor: pointer; border-radius: 4px; font-size: 0.78rem;">network.py</div>
+          <div class="file-item" data-file="radio.py" style="padding: 0.4rem 0.6rem; cursor: pointer; border-radius: 4px; font-size: 0.78rem;">radio.py</div>
+          <div class="file-item" data-file="coverage.py" style="padding: 0.4rem 0.6rem; cursor: pointer; border-radius: 4px; font-size: 0.78rem;">coverage.py</div>
+          <div class="file-item" data-file="features.py" style="padding: 0.4rem 0.6rem; cursor: pointer; border-radius: 4px; font-size: 0.78rem;">features.py</div>
+          <div class="file-item" data-file="oracle.py" style="padding: 0.4rem 0.6rem; cursor: pointer; border-radius: 4px; font-size: 0.78rem;">oracle.py</div>
+          <div class="file-item" data-file="train.py" style="padding: 0.4rem 0.6rem; cursor: pointer; border-radius: 4px; font-size: 0.78rem;">train.py</div>
+          <div class="file-item" data-file="pso_hybrid.py" style="padding: 0.4rem 0.6rem; cursor: pointer; border-radius: 4px; font-size: 0.78rem;">pso_hybrid.py</div>
+          <div class="file-item" data-file="simulator.py" style="padding: 0.4rem 0.6rem; cursor: pointer; border-radius: 4px; font-size: 0.78rem;">simulator.py</div>
+          <div class="file-item" data-file="benchmark.py" style="padding: 0.4rem 0.6rem; cursor: pointer; border-radius: 4px; font-size: 0.78rem;">benchmark.py</div>
+        </div>
+
+        <div class="canvas-card">
+          <div class="card-heading"><span id="code-filename-title">config.py</span></div>
+          <pre style="margin: 0; background: transparent; overflow: auto; max-height: 550px;"><code class="language-python" id="code-display"># Loading code...</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= VIEW 6: THEORY & FORMULATION ================= -->
+    <section class="tab-view" id="view-theory">
+      <div class="section-head">
+        <h2 class="section-title">Theoretical Formulation & Mathematical Models</h2>
+        <p class="section-subtitle">Mathematical proofs, radio dissipation equations, coverage formulations, and worked numerical examples.</p>
+      </div>
+
+      <div class="dual-canvas-grid">
+        <div class="canvas-card">
+          <div class="card-heading"><span>First-Order Radio Energy Model</span></div>
+          <p class="card-description">Energy dissipation for transmitting a k-bit packet across Euclidean distance d:</p>
+          <div style="background: rgba(0,0,0,0.4); padding: 0.75rem; border-radius: 6px; font-family: var(--font-mono); font-size: 0.8rem; color: var(--cyan);">
+            E_tx(k, d) = k · E_elec + (d &lt; d0 ? k · &epsilon;_fs · d² : k · &epsilon;_mp · d⁴)
+          </div>
+          <div style="font-size: 0.75rem; color: var(--text-secondary); line-height: 1.4;">
+            <b>Parameters:</b> E_elec = 50 nJ/bit, &epsilon;_fs = 10 pJ/bit/m², &epsilon;_mp = 0.0013 pJ/bit/m⁴.<br/>
+            <b>Crossover threshold:</b> d0 = sqrt(&epsilon;_fs / &epsilon;_mp) = 87.7m.<br/>
+            <b>Worked Example:</b> Transmitting k=4000 bits at d=20m (d &lt; d0):<br/>
+            E_tx = 4000 × 50×10⁻⁹ + 4000 × 10×10⁻¹² × (20)² = 0.000200 + 0.000016 = <b>0.216 mJ</b>.
+          </div>
+        </div>
+
+        <div class="canvas-card">
+          <div class="card-heading"><span>Multi-Objective PSO Fitness Function</span></div>
+          <p class="card-description">Evaluates optimal Cluster Head candidates balancing energy and latency:</p>
+          <div style="background: rgba(0,0,0,0.4); padding: 0.75rem; border-radius: 6px; font-family: var(--font-mono); font-size: 0.8rem; color: var(--purple);">
+            min Fitness = w_E·(1 - E_avg/E0) + w_BS·(d_BS/d_max) + w_intra·(d_intra/d_max)
+          </div>
+          <div style="font-size: 0.75rem; color: var(--text-secondary); line-height: 1.4;">
+            <b>Weights:</b> w_E = 0.35, w_BS = 0.25, w_intra = 0.20, w_cov = 0.10, w_ov = 0.10.<br/>
+            <b>Worked Example:</b> If candidate CHs have E_avg=0.45J (E0=0.5J), d_BS=60m (max=180m), d_intra=20m:<br/>
+            Fitness = 0.35×(1 - 0.90) + 0.25×(0.33) + 0.20×(0.11) = 0.035 + 0.083 + 0.022 = <b>0.140</b>.
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="app-footer">
+    <div>NeuroSense-WSN v2 • ANN-Powered Wireless Sensor Network Simulation Laboratory</div>
+    <div>Python Scientific Core + Plain ES6 JavaScript Frontend</div>
+  </footer>
+
+  <div id="app-toast" class="app-toast"></div>
+
+  <!-- Main ES6 JavaScript Entrypoint -->
+  <script type="module" src="js/main.js"></script>
+</body>
 </html>

@@ -1,31 +1,65 @@
-# NeuroSense-WSN — ANN Neural Classifier & Interactive 3D Section Animations
+# NeuroSense-WSN v2.2 — Verification & Walkthrough
 
-We have implemented the **ANN (Artificial Neural Network) Node-State Prediction & Sleep Scheduling** architecture and integrated **Interactive 3D Perspective Section Animations** across all cards and viewports.
-
----
-
-## 1. ANN (Artificial Neural Network) Integration
-
-| Feature | Details |
-| :--- | :--- |
-| **Dedicated Tab**: `ANN & Sleep Pruning` | Located directly in the top navigation bar with the Brain icon. Opens the comprehensive **`ANNNeuralLab`** view. |
-| **ANN Architecture Visualizer** | Interactive **Multi-Layer Perceptron (MLP 6-12-8-2)** diagram with Feed-Forward Softmax activations showing live synaptic weight propagation and Active/Sleep predictions. |
-| **6-Feature Vector Space** | Interactive diagnostic inspector for the 6 input features: $x_1$ (Residual Energy Ratio, $+2.0$), $x_2$ (Distance to Sink, $-0.02$), $x_3$ (Local Node Degree, $+1.5$), $x_4$ (Unique Coverage Factor, $+3.0$), $x_5$ (Overlap Redundancy, $-1.8$), and $x_6$ (Spatial Cluster Density, $+1.2$). |
-| **ANN Algorithm Selector** | Updated in the Simulation Parameters panel: `Proposed: ANN + PSO-Hybrid (Deep Sleep Scheduling)`, `ANN Node Classifier + Greedy Pruning (Δ ≤ 1.0%)`. |
-| **3D ANN Node Diagnostics** | Hovering over any sensor node in the 3D visualizer displays `ANN Prediction: ACTIVE (98.4%)` or `ANN Prediction: SLEEP (Redundancy Pruned)` in the floating holographic tooltip. |
-| **Phase 1 Action** | `Execute ANN Sleep Pruning & Repositioning` button in the right-side control panel. |
+We have diagnosed, resolved, and verified all 5 core UI, rendering, and control flow issues for **NeuroSense-WSN v2.2**.
 
 ---
 
-## 2. Interactive 3D Perspective Section Animations (`TiltCard3D`)
+## 1. Diagnostic Summary (`docs/debug_v2_2.md`)
 
-- **Card & Section 3D Tilt**: Moving the cursor over any UI section (3D Canvas container, Simulation Parameters panel, Coverage Heatmap, Voronoi Partition card, Metrics cards, or Neural Network layers) applies real-time 3D perspective tilt (`perspective(1000px) rotateX(...) rotateY(...) scale3d(1.015, 1.015, 1.015) translateZ(6px)`).
-- **Dynamic Glare Reflection**: A radial glare spotlight tracks the cursor position across each card surface.
-- **Micro-Audio Chirp**: Hovering over interactive cards plays a high-tech digital audio blip (`playAudioOnHover={true}`).
-- **3D Canvas Parallax**: Moving the cursor inside the 3D field tilts and elevates the targeted sensor nodes with glowing cyan beacon rings.
+1. **Disconnected Control Flow**: `#btn-start-routing` ran independently from `player.js`, leaving the player in `IDLE` state with 0 frames loaded until the entire 3000-round run finished.
+2. **1px WebGL Line Clamping & Invisible Arrowheads**: WebGL clamped `THREE.Line` width to 1px, causing routing links to be occluded beneath sensing disks.
+3. **Viewport Cropping**: Initial camera positioning cropped the Base Station at $(50, 150)$ at the top boundary and toolbar occluded nodes along $y \in [0, 15\text{m}]$.
+4. **Missing Terrain & RF Impairments**: Obstacle regions (Lake hazard, structural walls) and RF jammers lacked Three.js 3D spatial meshes.
+5. **Alpha Compounding**: Overlapping sensing disks without `depthWrite: false` compounded opacity, darkening active cyan nodes.
 
 ---
 
-## 3. Verification
-- `npm run build` ran with **0 errors**.
-- Dev server is running live on **`http://localhost:5173/`**.
+## 2. Implemented Upgrades & Fixes
+
+### Fix 1: Unified State Machine & Player Controller
+- **Unified Controller**: `#btn-start-routing` and the bottom `#btn-play-pause` drive the exact same state machine in `player.js` (`IDLE` $\to$ `PLAYING` $\rightleftharpoons$ `PAUSED` $\to$ `FINISHED`).
+- **Interactive State**: Clicking Start triggers computation $\to$ auto-plays from Round 1. While playing, the button toggles to **Pause**; while paused it becomes **Resume**; at the end it becomes **Replay**.
+- **Disabled State when 0 frames**: Timeline scrubber and Step buttons are disabled until frames are loaded.
+- **Dynamic Progress & Error Alerts**: Real API time (e.g. `200 OK (85ms)`) and error messages are rendered via toasts and the HUD overlay.
+
+### Fix 2: 3D Cylinder Links, Arrowheads & Dynamic Routing Topologies
+- **Thick 3D Links**: Rendered using `THREE.CylinderGeometry` with `depthTest: false` and `renderOrder: 20` for guaranteed visibility.
+- **Directional Arrowheads**: Rendered as 3D cones placed at $85\%$ along the transmission vector pointing at the receiver.
+- **Moving Photon Packets**: Moving blue photon spheres flow along active links and flash green upon reaching the Base Station.
+- **Protocol Topologies**:
+  - **LEACH**: Star clusters to gold Cluster Heads + direct long links to the Base Station.
+  - **PEGASIS**: Single amber chain sequence + leader-to-sink transmission.
+  - **ANN+PSO-Hybrid**: Multi-cluster intra-cluster chains + optimal CH-to-sink relays.
+- **Layer Visibility Checkboxes**: Links, Arrows, Packets, Disks, Labels toggles in the 3D viewport toolbar.
+
+### Fix 3: Camera Framing, Base Station & Impairment Meshes
+- **Full Field Framing**: Camera is calibrated to $(50, 165, 210)$ targeting $(50, 0, 75)$ so the full $100\times 100\text{m}$ field and Base Station $(50, 150)$ are in view. Added **Fit View** camera button.
+- **Base Station Sink**: Green octagonal dome with mast, pulsating flash mesh, and label `BS (50, 150)`.
+- **Terrain & Jammers**:
+  - Central Lake hazard rendered as blue translucent water mesh.
+  - Dual facility walls rendered as 3D barrier blocks.
+  - RF Jammers rendered as red radio masts with pulsing circular interference rings.
+- **Sensing Disks**: Low opacity ($0.06$) with bright outer rim and `depthWrite: false` rendered behind bright sensor nodes.
+
+### Fix 4: Debug HUD Overlay (Key `D`)
+- Pressing `D` toggles a floating HUD overlay displaying:
+  - Frames Loaded
+  - Current Frame Index
+  - Player State (`PLAYING` / `PAUSED` / `IDLE`)
+  - Sim Speed (`0.25x` - `16x`)
+  - API Status & Time (ms)
+  - Last Error state
+
+---
+
+## 3. Automated Test Verification
+
+All 23 automated tests pass with 0 errors:
+```bash
+pytest -v tests/
+============================= 23 passed in 13.00s ==============================
+```
+
+- `tests/test_simulation_player_e2e.py`: Proves Start $\to$ Play $\to$ Pause (frozen state) $\to$ Resume $\to$ Step ▶ / Step ◀ $\to$ Timeline scrubber jump $\to$ Reset.
+- `tests/test_live_benchmark_match.py`: Proves live simulation frames match benchmark data deterministically.
+- Strict constraint verified: **All files across `src/`, `web/js/`, `tests/`, and `app.py` are strictly $< 300$ lines.**
