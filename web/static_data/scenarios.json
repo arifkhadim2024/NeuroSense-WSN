@@ -1,0 +1,177 @@
+{
+  "scenarios": {
+    "s1": {
+      "id": "s1",
+      "name": "Scenario 1: Sparse Grid",
+      "description": "N=30 nodes, Rs=10m. Tests low-redundancy spatial coverage.",
+      "num_nodes": 30,
+      "sensing_radius": 10.0,
+      "comm_radius": 20.0,
+      "deployment_type": "random"
+    },
+    "s2": {
+      "id": "s2",
+      "name": "Scenario 2: Standard Benchmark",
+      "description": "N=50 nodes, Rs=15m. Standard research baseline topology.",
+      "num_nodes": 50,
+      "sensing_radius": 15.0,
+      "comm_radius": 30.0,
+      "deployment_type": "random"
+    },
+    "s3": {
+      "id": "s3",
+      "name": "Scenario 3: High Density Cluster",
+      "description": "N=80 nodes, Rs=12m. High sensing overlap and dense clusters.",
+      "num_nodes": 80,
+      "sensing_radius": 12.0,
+      "comm_radius": 24.0,
+      "deployment_type": "clustered"
+    },
+    "s4": {
+      "id": "s4",
+      "name": "Scenario 4: Extended Network Array",
+      "description": "N=100 nodes, Rs=15m. Large-scale multi-cluster deployment.",
+      "num_nodes": 100,
+      "sensing_radius": 15.0,
+      "comm_radius": 30.0,
+      "deployment_type": "grid"
+    }
+  },
+  "obstacles": {
+    "none": [],
+    "central-lake": [
+      {
+        "type": "rect",
+        "x": 40.0,
+        "y": 40.0,
+        "w": 20.0,
+        "h": 20.0,
+        "label": "Central Hazard / Lake"
+      }
+    ],
+    "dual-walls": [
+      {
+        "type": "rect",
+        "x": 25.0,
+        "y": 15.0,
+        "w": 5.0,
+        "h": 50.0,
+        "label": "Facility Wall Alpha"
+      },
+      {
+        "type": "rect",
+        "x": 70.0,
+        "y": 35.0,
+        "w": 5.0,
+        "h": 50.0,
+        "label": "Facility Wall Beta"
+      }
+    ],
+    "corner-zones": [
+      {
+        "type": "rect",
+        "x": 0.0,
+        "y": 0.0,
+        "w": 25.0,
+        "h": 25.0,
+        "label": "SW Basin"
+      },
+      {
+        "type": "rect",
+        "x": 75.0,
+        "y": 75.0,
+        "w": 25.0,
+        "h": 25.0,
+        "label": "NE Basin"
+      }
+    ]
+  },
+  "jammers": {
+    "none": [],
+    "central-jammer": [
+      {
+        "id": "j1",
+        "x": 50.0,
+        "y": 50.0,
+        "radius": 22.0,
+        "power": 1.0,
+        "label": "Central Jammer"
+      }
+    ],
+    "dual-jammers": [
+      {
+        "id": "j1",
+        "x": 30.0,
+        "y": 45.0,
+        "radius": 16.0,
+        "power": 1.0,
+        "label": "West Jammer"
+      },
+      {
+        "id": "j2",
+        "x": 70.0,
+        "y": 55.0,
+        "radius": 16.0,
+        "power": 1.0,
+        "label": "East Jammer"
+      }
+    ]
+  },
+  "pois": {
+    "none": [],
+    "high-value-assets": [
+      {
+        "id": "p1",
+        "x": 25.0,
+        "y": 30.0,
+        "name": "Asset Alpha"
+      },
+      {
+        "id": "p2",
+        "x": 75.0,
+        "y": 75.0,
+        "name": "Asset Beta"
+      },
+      {
+        "id": "p3",
+        "x": 50.0,
+        "y": 45.0,
+        "name": "Asset Gamma"
+      }
+    ],
+    "perimeter-patrol": [
+      {
+        "id": "p1",
+        "x": 15.0,
+        "y": 85.0,
+        "name": "North Perimeter"
+      },
+      {
+        "id": "p2",
+        "x": 85.0,
+        "y": 15.0,
+        "name": "South Perimeter"
+      }
+    ],
+    "dynamic-convoy": [
+      {
+        "id": "p1",
+        "x": 20.0,
+        "y": 50.0,
+        "name": "Convoy Unit 1"
+      },
+      {
+        "id": "p2",
+        "x": 50.0,
+        "y": 50.0,
+        "name": "Convoy Unit 2"
+      },
+      {
+        "id": "p3",
+        "x": 80.0,
+        "y": 50.0,
+        "name": "Convoy Unit 3"
+      }
+    ]
+  }
+}

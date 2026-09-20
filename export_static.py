@@ -63,6 +63,18 @@ def export_all_static_data(output_dir: str = "static_data") -> None:
 
     print(f"Successfully exported all static datasets to '{output_dir}/'")
 
+    # Also mirror into web/static_data for direct static edge hosting
+    web_static_dir = os.path.join("web", "static_data")
+    if output_dir != web_static_dir:
+        os.makedirs(web_static_dir, exist_ok=True)
+        import shutil
+        for filename in ["scenarios.json", "initial_deploy.json", "ann_model.json", "benchmark.json"]:
+            src_f = os.path.join(output_dir, filename)
+            dst_f = os.path.join(web_static_dir, filename)
+            if os.path.exists(src_f):
+                shutil.copy2(src_f, dst_f)
+        print(f"Successfully mirrored static datasets to '{web_static_dir}/'")
+
 
 if __name__ == "__main__":
     export_all_static_data()

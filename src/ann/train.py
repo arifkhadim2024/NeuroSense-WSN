@@ -3,7 +3,7 @@ Model Training and Honest Seed-Split Evaluation Module.
 Trains the MLPClassifier on true oracle labels and benchmarks against baselines.
 """
 
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 import os
 import joblib
 import numpy as np
@@ -24,9 +24,14 @@ from src.ann.features import FEATURE_NAMES
 from src.ann.dataset import build_ann_dataset
 
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DEFAULT_DATA_PATH = os.path.join(BASE_DIR, "data", "ann_training_data.csv")
+DEFAULT_MODEL_DIR = os.path.join(BASE_DIR, "models")
+
+
 def train_ann_model(
-    data_csv_path: str = "data/ann_training_data.csv",
-    model_dir: str = "models",
+    data_csv_path: Optional[str] = None,
+    model_dir: Optional[str] = None,
     test_seed_fraction: float = 0.20,
     random_state: int = 42
 ) -> Dict[str, Any]:
@@ -42,6 +47,11 @@ def train_ann_model(
     Returns:
         Dictionary of comprehensive model metrics, confusion matrix, and baselines.
     """
+    if data_csv_path is None:
+        data_csv_path = DEFAULT_DATA_PATH
+    if model_dir is None:
+        model_dir = DEFAULT_MODEL_DIR
+
     if not os.path.exists(data_csv_path):
         build_ann_dataset(num_deployments=200, output_csv_path=data_csv_path)
 

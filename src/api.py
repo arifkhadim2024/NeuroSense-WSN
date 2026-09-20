@@ -18,8 +18,19 @@ from src.scheduler import schedule_nodes
 from src.simulator import run_simulation
 from src.benchmark import run_phase1_ablation, run_protocol_benchmark
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
+
+
+@api_bp.route("/health", methods=["GET"])
+def health_check():
+    """Health check endpoint for Vercel / server monitoring."""
+    return jsonify({
+        "status": "ok",
+        "service": "NeuroSense-WSN API",
+        "version": "2.0.0"
+    })
 
 
 @api_bp.route("/scenarios", methods=["GET"])
@@ -68,7 +79,7 @@ def deploy():
 @api_bp.route("/ann/model", methods=["GET"])
 def get_ann_model():
     """Return exported ANN model weights, metrics, and architecture."""
-    weights_path = "models/ann_weights.json"
+    weights_path = os.path.join(BASE_DIR, "models", "ann_weights.json")
     if not os.path.exists(weights_path):
         export_ann_weights_json()
     with open(weights_path, "r") as f:
@@ -161,7 +172,7 @@ def benchmark():
     data = request.get_json() or {}
     max_rounds = int(data.get("max_rounds", 3000))
     force = bool(data.get("force", False))
-    cache_path = "static_data/benchmark.json"
+    cache_path = os.path.join(BASE_DIR, "static_data", "benchmark.json")
 
     if not force and max_rounds == 3000 and os.path.exists(cache_path):
         with open(cache_path, "r") as f:
@@ -206,8 +217,12 @@ def get_source(filename: str):
         "simulator.py": "src/simulator.py",
         "benchmark.py": "src/benchmark.py"
     }
-    file_path = safe_files.get(filename)
-    if not file_path or not os.path.exists(file_path):
+    rel_path = safe_files.get(filename)
+    if not rel_path:
+        return jsonify({"error": "File not found"}), 404
+
+    file_path = os.path.join(BASE_DIR, rel_path)
+    if not os.path.exists(file_path):
         return jsonify({"error": "File not found"}), 404
 
     with open(file_path, "r") as f:

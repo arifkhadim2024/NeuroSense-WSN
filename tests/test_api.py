@@ -16,6 +16,15 @@ def client():
         yield client
 
 
+def test_api_health(client):
+    """Verify /api/health endpoint returns status ok."""
+    res = client.get("/api/health")
+    assert res.status_code == 200
+    data = res.get_json()
+    assert data["status"] == "ok"
+    assert data["version"] == "2.0.0"
+
+
 def test_api_scenarios(client):
     """Verify /api/scenarios endpoint returns presets."""
     res = client.get("/api/scenarios")

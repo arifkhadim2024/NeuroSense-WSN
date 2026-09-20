@@ -16,10 +16,17 @@ from src.ann.oracle import run_greedy_oracle
 from src.ann.train import train_ann_model
 
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DEFAULT_MODEL_DIR = os.path.join(BASE_DIR, "models")
+
+
 def load_ann_artifacts(
-    model_dir: str = "models"
+    model_dir: Optional[str] = None
 ) -> Tuple[Any, Any]:
     """Load serialized MLPClassifier and StandardScaler, training if missing."""
+    if model_dir is None:
+        model_dir = DEFAULT_MODEL_DIR
+
     model_path = os.path.join(model_dir, "ann_model.pkl")
     scaler_path = os.path.join(model_dir, "ann_scaler.pkl")
 
@@ -78,8 +85,8 @@ def predict_node_states(
 
 
 def export_ann_weights_json(
-    model_dir: str = "models",
-    output_json_path: str = "models/ann_weights.json"
+    model_dir: Optional[str] = None,
+    output_json_path: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Export neural network weights, biases, and metadata to JSON for the web frontend.
@@ -91,6 +98,10 @@ def export_ann_weights_json(
     Returns:
         Dictionary of exported ANN model metadata.
     """
+    if model_dir is None:
+        model_dir = DEFAULT_MODEL_DIR
+    if output_json_path is None:
+        output_json_path = os.path.join(model_dir, "ann_weights.json")
     model, scaler = load_ann_artifacts(model_dir)
 
     # 1. Extract layer weights and biases from scikit-learn MLPClassifier
