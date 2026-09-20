@@ -1,86 +1,151 @@
 import React, { useState } from 'react';
 import { 
-  TrendingUp, Activity, ChevronDown, ChevronUp
+  Trophy, BarChart3, TrendingUp, Activity, FileSpreadsheet
 } from 'lucide-react';
-import { useWSNSimulation } from '../context/SimulationContext';
+import { BenchmarkLab } from './BenchmarkLab';
 import { AlgorithmComparison } from './AlgorithmComparison';
+import { ResearchResults } from './ResearchResults';
 import { AnalyticsDashboard } from './AnalyticsDashboard';
+import { ResearchPlotsLab } from './ResearchPlotsLab';
+import { soundFX } from '../utils/soundEffects';
 
 export const ResultsView: React.FC = () => {
-  const { telemetry } = useWSNSimulation();
-  const [showFullCharts, setShowFullCharts] = useState<boolean>(true);
+  const [activeResultsTab, setActiveResultsTab] = useState<'benchmarks' | 'comparisons' | 'tables' | 'dashboard' | 'plots'>('benchmarks');
 
   return (
-    <div className="space-y-8 font-sans animate-fadeIn">
+    <div className="space-y-6 font-sans animate-fadeIn">
       
-      {/* Header */}
-      <div className="text-center max-w-3xl mx-auto space-y-2">
-        <span className="text-xs font-mono font-bold uppercase tracking-widest text-cyan-400 bg-cyan-500/10 px-3 py-1 rounded-full border border-cyan-500/20 inline-flex items-center gap-1.5 shadow-sm">
-          <Activity className="w-3.5 h-3.5" />
-          Empirical Simulation Results &amp; Protocol Comparisons
+      {/* 1. Header */}
+      <div className="text-center max-w-4xl mx-auto space-y-2">
+        <span className="text-xs font-mono font-bold uppercase tracking-widest text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 inline-flex items-center gap-1.5 shadow-sm">
+          <Trophy className="w-3.5 h-3.5" />
+          Empirical Results &amp; Academic Verification
         </span>
-        <h2 className="text-2xl sm:text-4xl font-extrabold text-white font-mono">
-          Research Results &amp; Performance
+        <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-white font-mono">
+          Research Benchmarks &amp; Performance Verification
         </h2>
-        <p className="text-slate-400 text-xs sm:text-sm max-w-2xl mx-auto leading-relaxed">
-          Reproducible 100-seed experimental metrics comparing Proposed ANN + PSO-Hybrid against classical LEACH, PEGASIS, and Hybrid benchmarks.
+        <p className="text-slate-400 text-xs sm:text-sm max-w-3xl mx-auto leading-relaxed">
+          Statistically verified across 100 random seeds comparing the proposed ANN + PSO-Hybrid architecture against classical LEACH, PEGASIS, and Hybrid benchmarks.
         </p>
       </div>
 
-      {/* Primary Results Metric Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 font-mono text-xs max-w-5xl mx-auto">
-        <div className="bg-[#0D1626] rounded-2xl p-4 border border-[#1C3150] space-y-1">
-          <span className="text-[10px] text-slate-400 uppercase font-bold">Coverage</span>
-          <div className="text-xl font-bold text-white">{telemetry.currentCoveragePct.toFixed(1)}%</div>
-          <span className="text-[10px] text-cyan-400">Δ ≤ 1.0% Preserved</span>
+      {/* 2. Sub-Lab Switcher Tabs */}
+      <div className="flex flex-wrap justify-between items-center gap-3 bg-[#0D1626] p-2 rounded-2xl border border-[#1C3150] font-mono text-xs shadow-xl max-w-5xl mx-auto">
+        <div className="flex items-center space-x-2 overflow-x-auto no-scrollbar w-full sm:w-auto">
+          
+          <button
+            onClick={() => {
+              soundFX.playClickSound();
+              setActiveResultsTab('benchmarks');
+            }}
+            className={`px-4 py-2 rounded-xl transition-all flex items-center space-x-2 font-bold cursor-pointer shrink-0 ${
+              activeResultsTab === 'benchmarks'
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-slate-950 shadow-md shadow-emerald-500/20 font-black'
+                : 'text-slate-400 hover:text-white hover:bg-[#070B14]'
+            }`}
+          >
+            <Trophy className="w-4 h-4 text-emerald-300" />
+            <span>100-Seed Academic Benchmark</span>
+          </button>
+
+          <button
+            onClick={() => {
+              soundFX.playClickSound();
+              setActiveResultsTab('comparisons');
+            }}
+            className={`px-4 py-2 rounded-xl transition-all flex items-center space-x-2 font-bold cursor-pointer shrink-0 ${
+              activeResultsTab === 'comparisons'
+                ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 shadow-md shadow-cyan-500/20 font-black'
+                : 'text-slate-400 hover:text-white hover:bg-[#070B14]'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4 text-cyan-400" />
+            <span>Algorithm Comparison &amp; Radar</span>
+          </button>
+
+          <button
+            onClick={() => {
+              soundFX.playClickSound();
+              setActiveResultsTab('tables');
+            }}
+            className={`px-4 py-2 rounded-xl transition-all flex items-center space-x-2 font-bold cursor-pointer shrink-0 ${
+              activeResultsTab === 'tables'
+                ? 'bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-md shadow-violet-500/20'
+                : 'text-slate-400 hover:text-white hover:bg-[#070B14]'
+            }`}
+          >
+            <FileSpreadsheet className="w-4 h-4 text-violet-300" />
+            <span>Publication Data Tables</span>
+          </button>
+
+          <button
+            onClick={() => {
+              soundFX.playClickSound();
+              setActiveResultsTab('dashboard');
+            }}
+            className={`px-4 py-2 rounded-xl transition-all flex items-center space-x-2 font-bold cursor-pointer shrink-0 ${
+              activeResultsTab === 'dashboard'
+                ? 'bg-gradient-to-r from-amber-500 to-rose-600 text-slate-950 shadow-md shadow-amber-500/20 font-black'
+                : 'text-slate-400 hover:text-white hover:bg-[#070B14]'
+            }`}
+          >
+            <Activity className="w-4 h-4 text-amber-300" />
+            <span>Telemetry Dashboard</span>
+          </button>
+
+          <button
+            onClick={() => {
+              soundFX.playClickSound();
+              setActiveResultsTab('plots');
+            }}
+            className={`px-4 py-2 rounded-xl transition-all flex items-center space-x-2 font-bold cursor-pointer shrink-0 ${
+              activeResultsTab === 'plots'
+                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-500/20'
+                : 'text-slate-400 hover:text-white hover:bg-[#070B14]'
+            }`}
+          >
+            <TrendingUp className="w-4 h-4 text-blue-300" />
+            <span>Scrubbable 3D Plots</span>
+          </button>
+
         </div>
-        <div className="bg-[#0D1626] rounded-2xl p-4 border border-[#1C3150] space-y-1">
-          <span className="text-[10px] text-slate-400 uppercase font-bold">Overlap Eliminated</span>
-          <div className="text-xl font-bold text-cyan-300">-33.38%</div>
-          <span className="text-[10px] text-cyan-400">82.51% → 54.97%</span>
-        </div>
-        <div className="bg-[#0D1626] rounded-2xl p-4 border border-[#1C3150] space-y-1">
-          <span className="text-[10px] text-slate-400 uppercase font-bold">FND Extension</span>
-          <div className="text-xl font-bold text-purple-300">+194.01%</div>
-          <span className="text-[10px] text-purple-400">144 → 425 rnds</span>
-        </div>
-        <div className="bg-[#0D1626] rounded-2xl p-4 border border-[#1C3150] space-y-1">
-          <span className="text-[10px] text-slate-400 uppercase font-bold">HND Extension</span>
-          <div className="text-xl font-bold text-amber-300">+17.37%</div>
-          <span className="text-[10px] text-amber-400">852 → 1000 rnds</span>
-        </div>
-        <div className="bg-[#0D1626] rounded-2xl p-4 border border-[#1C3150] space-y-1">
-          <span className="text-[10px] text-slate-400 uppercase font-bold">Packet Delivery</span>
-          <div className="text-xl font-bold text-emerald-400">{telemetry.deliveryRatio.toFixed(1)}%</div>
-          <span className="text-[10px] text-slate-400">High Reliability</span>
-        </div>
-        <div className="bg-[#0D1626] rounded-2xl p-4 border border-[#1C3150] space-y-1">
-          <span className="text-[10px] text-slate-400 uppercase font-bold">Runtime Speedup</span>
-          <div className="text-xl font-bold text-cyan-300">49.32%</div>
-          <span className="text-[10px] text-slate-400">Faster Simulation</span>
+
+        <div className="text-[11px] text-slate-400 hidden lg:block pr-2">
+          Active: <strong className="text-white capitalize">{activeResultsTab.replace('_', ' ')}</strong>
         </div>
       </div>
 
-      {/* Protocol Benchmark Comparison Module */}
-      <AlgorithmComparison />
+      {/* 3. Dynamic Sub-Lab Content */}
+      <div className="space-y-6">
+        {activeResultsTab === 'benchmarks' && (
+          <div className="space-y-6 animate-fadeIn">
+            <BenchmarkLab />
+          </div>
+        )}
 
-      {/* Expandable Empirical Analytics Charts */}
-      <div className="space-y-4">
-        <div className="flex justify-between items-center max-w-5xl mx-auto font-mono text-xs">
-          <span className="font-bold text-white flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-cyan-400" />
-            Empirical Research Simulation Charts (15 Verified Datasets)
-          </span>
-          <button
-            onClick={() => setShowFullCharts(!showFullCharts)}
-            className="text-slate-400 hover:text-white flex items-center gap-1 transition-colors"
-          >
-            <span>{showFullCharts ? 'Collapse Charts' : 'Expand Charts'}</span>
-            {showFullCharts ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-          </button>
-        </div>
+        {activeResultsTab === 'comparisons' && (
+          <div className="space-y-6 animate-fadeIn">
+            <AlgorithmComparison />
+          </div>
+        )}
 
-        {showFullCharts && <AnalyticsDashboard />}
+        {activeResultsTab === 'tables' && (
+          <div className="space-y-6 animate-fadeIn">
+            <ResearchResults />
+          </div>
+        )}
+
+        {activeResultsTab === 'dashboard' && (
+          <div className="space-y-6 animate-fadeIn">
+            <AnalyticsDashboard />
+          </div>
+        )}
+
+        {activeResultsTab === 'plots' && (
+          <div className="space-y-6 animate-fadeIn">
+            <ResearchPlotsLab />
+          </div>
+        )}
       </div>
 
     </div>

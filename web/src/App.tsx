@@ -4,25 +4,12 @@ import { Radio } from 'lucide-react';
 import { SimulationProvider } from './context/SimulationContext';
 import { Navigation, type PrimaryTab } from './components/Navigation';
 
-// Tab Views & Labs
+// 5 Primary Research Labs & Views
 import { HomeSimulationView } from './components/HomeSimulationView';
-import { CoverageLab } from './components/CoverageLab';
-import { CoverageAnalytics } from './components/CoverageAnalytics';
-import { ANNNeuralLab } from './components/ANNNeuralLab';
-import { OptimizationLab } from './components/OptimizationLab';
-import { ClusteringLab } from './components/ClusteringLab';
-import { VoronoiLab } from './components/VoronoiLab';
-import { RoutingLab } from './components/RoutingLab';
-import { RoutingProtocolsLab } from './components/RoutingProtocolsLab';
-import { EnergyLifetimeLab } from './components/EnergyLifetimeLab';
-import { EnergyAnalytics } from './components/EnergyAnalytics';
-import { AnalyticsDashboard } from './components/AnalyticsDashboard';
-import { BenchmarkLab } from './components/BenchmarkLab';
-import { AlgorithmComparison } from './components/AlgorithmComparison';
-import { ResearchResults } from './components/ResearchResults';
-import { ResearchTheory } from './components/ResearchTheory';
-import { SourceCodeViewer } from './components/SourceCodeViewer';
-import { MasterGuideViewer } from './components/MasterGuideViewer';
+import { OptimizationView } from './components/OptimizationView';
+import { RoutingView } from './components/RoutingView';
+import { ResultsView } from './components/ResultsView';
+import { ResearchView } from './components/ResearchView';
 
 // Modals
 import { ExperimentWizardModal } from './components/ExperimentWizardModal';
@@ -31,83 +18,24 @@ import { ReportGeneratorModal } from './components/ReportGeneratorModal';
 import { ScenarioManagerModal } from './components/ScenarioManagerModal';
 
 function ResearchLabContent() {
-  const [activeTab, setActiveTab] = useState<PrimaryTab>('digital_twin');
+  const [activeTab, setActiveTab] = useState<PrimaryTab>('simulation');
   const [isWizardOpen, setIsWizardOpen] = useState<boolean>(false);
   const [isExplainOpen, setIsExplainOpen] = useState<boolean>(false);
   const [isReportOpen, setIsReportOpen] = useState<boolean>(false);
 
-  // Render the selected primary lab/tab (11 Dedicated Tabs)
+  // Render the selected primary lab/tab (5 Primary Navigation Tabs)
   const renderActiveTab = () => {
     switch (activeTab) {
-      case 'digital_twin':
+      case 'simulation':
         return <HomeSimulationView />;
-      case 'coverage_lab':
-        return (
-          <div className="space-y-8 animate-fadeIn">
-            <CoverageLab />
-            <CoverageAnalytics />
-          </div>
-        );
-      case 'optimization_lab':
-        return (
-          <div className="space-y-8 animate-fadeIn">
-            <ANNNeuralLab />
-            <OptimizationLab />
-          </div>
-        );
-      case 'clustering_lab':
-        return (
-          <div className="space-y-8 animate-fadeIn">
-            <ClusteringLab />
-            <VoronoiLab />
-          </div>
-        );
-      case 'routing_lab':
-        return (
-          <div className="space-y-8 animate-fadeIn">
-            <RoutingLab />
-            <RoutingProtocolsLab />
-          </div>
-        );
-      case 'energy_lifetime':
-        return (
-          <div className="space-y-8 animate-fadeIn">
-            <EnergyLifetimeLab />
-            <EnergyAnalytics />
-          </div>
-        );
-      case 'analytics':
-        return (
-          <div className="space-y-8 animate-fadeIn">
-            <AnalyticsDashboard />
-          </div>
-        );
-      case 'benchmark':
-        return (
-          <div className="space-y-8 animate-fadeIn">
-            <BenchmarkLab />
-            <AlgorithmComparison />
-            <ResearchResults />
-          </div>
-        );
-      case 'theory':
-        return (
-          <div className="space-y-8 animate-fadeIn">
-            <ResearchTheory />
-          </div>
-        );
-      case 'source_code':
-        return (
-          <div className="space-y-8 animate-fadeIn">
-            <SourceCodeViewer />
-          </div>
-        );
-      case 'research_guide':
-        return (
-          <div className="space-y-8 animate-fadeIn">
-            <MasterGuideViewer />
-          </div>
-        );
+      case 'optimization':
+        return <OptimizationView />;
+      case 'routing':
+        return <RoutingView />;
+      case 'results':
+        return <ResultsView />;
+      case 'research':
+        return <ResearchView />;
       default:
         return <HomeSimulationView />;
     }
@@ -180,7 +108,7 @@ function ResearchLabContent() {
           </div>
           <div className="flex items-center space-x-3 text-[11px] text-slate-500">
             <span>First-Order Radio Model (E_elec = 50 nJ/bit, d_0 = 87.7m)</span>
-            <span>•</span>
+            <span>&bull;</span>
             <span className="text-cyan-400/80 font-bold">100-Seed Academic Benchmark</span>
           </div>
         </div>
@@ -199,4 +127,3 @@ function App() {
 }
 
 export default App;
-

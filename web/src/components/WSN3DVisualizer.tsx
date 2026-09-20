@@ -2,15 +2,174 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { 
-  Play, Pause, RotateCcw, Settings2, Sparkles, Brain,
-  Maximize2, Minimize2, Eye, Activity, Radio,
-  Layers, Hexagon, GitBranch, Zap, ShieldCheck
+  Maximize2, Minimize2,
+  Sliders,
+  ChevronRight, ChevronLeft,
+  Crosshair, Move, PlusCircle, Trash2,
+  Volume2, VolumeX, Brain, Sparkles,
+  Compass, TrendingUp
 } from 'lucide-react';
 import { useWSNSimulation } from '../context/SimulationContext';
-import { NodeInspectorModal } from './NodeInspectorModal';
 import { soundFX } from '../utils/soundEffects';
-import { TiltCard3D } from './TiltCard3D';
-import type { DynamicNodeState, RoutingProtocol, OptimizationAlgorithm, CameraMode } from '../types/wsn';
+import type { DynamicNodeState, RoutingProtocol, CameraMode } from '../types/wsn';
+
+// 6 Dedicated Visualization Modes
+type VisMode = 'full' | 'network' | 'coverage' | 'routing' | 'energy' | 'voronoi';
+type ToolMode = 'inspect' | 'relocate' | 'inject' | 'remove';
+
+interface Node3DHandle {
+  id: number;
+  group: THREE.Group;
+  casingMesh: THREE.Mesh;
+  ledMesh: THREE.Mesh;
+  mastMesh: THREE.Mesh;
+  beaconMesh: THREE.Mesh;
+  chCrownMesh: THREE.Mesh;
+  diskMesh: THREE.Mesh;
+  diskRingMesh: THREE.Mesh;
+  sprite: THREE.Sprite;
+  baseY: number;
+  currentPos: THREE.Vector3;
+  targetPos: THREE.Vector3;
+  node: DynamicNodeState;
+  isCH: boolean;
+  txFlashTimer: number;
+  rxFlashTimer: number;
+}
+
+interface DynamicLaserBeam {
+  coreLine: THREE.Line;
+  haloLine: THREE.Line;
+  points: THREE.Vector3[];
+  sourceId: number;
+  targetId: number | 'sink';
+  isUplink: boolean;
+  activePhase: [number, number]; // [startPhase, endPhase] within round cycle
+  label: string;
+}
+
+interface PacketParticleItem {
+  mesh: THREE.Mesh;
+  offsetT: number;
+  lateralX: number;
+  lateralY: number;
+  lateralZ: number;
+  baseScale: number;
+}
+
+interface DynamicPacketStream {
+  group: THREE.Group;
+  particles: PacketParticleItem[];
+  path: THREE.Vector3[];
+  color: number;
+  sourceId: number;
+  targetId: number | 'sink';
+  targetPos: THREE.Vector3;
+  isUplink: boolean;
+  activePhase: [number, number];
+  label: string;
+}
+
+interface GroundRipple {
+  mesh: THREE.Mesh;
+  scale: number;
+  opacity: number;
+  maxScale: number;
+  speed: number;
+}
+
+interface AggregationPulse {
+  mesh: THREE.Mesh;
+  scale: number;
+  opacity: number;
+  maxScale: number;
+  speed: number;
+}
+
+interface EMPShockwave {
+  mesh: THREE.Mesh;
+  currentRadius: number;
+  maxRadius: number;
+  opacity: number;
+  speed: number;
+}
+
+// 8 Discrete Event Stages per Round Cycle
+interface EventStageInfo {
+  stageNumber: number;
+  name: string;
+  shortDesc: string;
+  longDesc: string;
+  startP: number;
+  endP: number;
+}
+
+const EVENT_STAGES: EventStageInfo[] = [
+  {
+    stageNumber: 1,
+    name: 'Cluster Head Election',
+    shortDesc: 'Swarm / Multi-objective CH Selection',
+    longDesc: 'Multi-objective evaluation of residual battery energy, sink distance, and spatial coverage contribution to elect optimal Cluster Heads.',
+    startP: 0.00,
+    endP: 0.10
+  },
+  {
+    stageNumber: 2,
+    name: 'Cluster Formation',
+    shortDesc: 'Active Link Topology Setup',
+    longDesc: 'Sensor nodes compute communication distances and configure routing links to nearest Cluster Head or chain neighbor.',
+    startP: 0.10,
+    endP: 0.22
+  },
+  {
+    stageNumber: 3,
+    name: 'Member Data Transmission',
+    shortDesc: 'Node → Cluster Head Laser Flow',
+    longDesc: 'Active member sensors fire directional laser communication beams and transmit monitored environmental telemetry packets to their Cluster Head.',
+    startP: 0.22,
+    endP: 0.45
+  },
+  {
+    stageNumber: 4,
+    name: 'Packet Receipt & Buffer',
+    shortDesc: 'Cluster Head Ingestion',
+    longDesc: 'Cluster Heads receive member telemetry packets with a status flash and register payload data into local memory buffer.',
+    startP: 0.45,
+    endP: 0.55
+  },
+  {
+    stageNumber: 5,
+    name: 'Data Fusion & Aggregation',
+    shortDesc: 'Payload Compression & Fusion',
+    longDesc: 'Cluster Head fuses multiple sensor data streams, reducing packet overhead and compressing telemetry into an aggregated super-packet.',
+    startP: 0.55,
+    endP: 0.67
+  },
+  {
+    stageNumber: 6,
+    name: 'Base Station Uplink',
+    shortDesc: 'CH → Sink Long-Range Laser',
+    longDesc: 'Cluster Head fires a high-power directional laser beam to transmit the aggregated super-packet to the Base Station.',
+    startP: 0.67,
+    endP: 0.88
+  },
+  {
+    stageNumber: 7,
+    name: 'Sink Ingestion & Reception',
+    shortDesc: 'Base Station Packet Absorption',
+    longDesc: 'Base Station validates telemetry reception at sink coordinates. Central core pulses and network throughput counters increment.',
+    startP: 0.88,
+    endP: 0.95
+  },
+  {
+    stageNumber: 8,
+    name: 'Energy Settlement',
+    shortDesc: 'First-Order Radio Dissipation',
+    longDesc: 'Residual battery dissipation settled across all transmitting and receiving nodes based on the first-order radio energy model.',
+    startP: 0.95,
+    endP: 1.00
+  }
+];
 
 export const WSN3DVisualizer: React.FC = () => {
   const {
@@ -23,19 +182,52 @@ export const WSN3DVisualizer: React.FC = () => {
     activeClusterHeads,
     currentRound,
     isPlaying,
+    playbackSpeed,
+    setPlaybackSpeed,
     play,
     pause,
     restart,
+    stepForward,
+    stepBackward,
     selectedProtocol,
     setSelectedProtocol,
     selectedOptimizer,
-    setSelectedOptimizer,
+    selectedSeed,
+    setSelectedSeed,
     executeOptimization,
     isOptimizing,
     currentOptIteration,
+    activeForceVectors,
     telemetry,
     saveCustomScenario,
-    selectScenario
+    voronoiMode,
+    voronoiPolygons,
+    injectEnergyToNode,
+    relocateNode,
+    toggleNodeState,
+    annInferenceResult,
+    isANNRunning,
+    runANNInference,
+    beforeAfterMetrics,
+    annHeatmapMode,
+    setAnnHeatmapMode,
+    showANNMoveVectors,
+    setShowANNMoveVectors,
+    showOverlapConcentration,
+    setShowOverlapConcentration,
+    showBlindspotHoles,
+    setShowBlindspotHoles,
+    isResearchDemoActive,
+    researchDemoStep,
+    researchDemoNarrative,
+    startResearchDemo,
+    stopResearchDemo,
+    isAudioEnabled,
+    toggleAudio,
+    isPresentationMode,
+    setIsPresentationMode,
+    setCurrentEventStageIndex,
+    setCurrentEventStageLabel
   } = useWSNSimulation();
 
   // 3D Canvas & Camera State
@@ -47,133 +239,60 @@ export const WSN3DVisualizer: React.FC = () => {
   const controlsRef = useRef<OrbitControls | null>(null);
   const animationFrameId = useRef<number>(0);
 
-  // Camera & Layer Visibility Toggles
+  // Left Tool Dock: Inspect, Relocate, Inject, Remove
+  const [toolMode, setToolMode] = useState<ToolMode>('inspect');
+
+  // Visualization Mode Selector: FULL, NETWORK, COVERAGE, ROUTING, ENERGY, VORONOI
+  const [visMode, setVisMode] = useState<VisMode>('full');
+
+  // Camera & Interaction States
   const [activeCamPreset, setActiveCamPreset] = useState<CameraMode>('perspective');
   const [is360Rotating, setIs360Rotating] = useState<boolean>(false);
-  const [simSpeed, setSimSpeed] = useState<number>(1);
+  const [showDiskBubbles, setShowDiskBubbles] = useState<boolean>(true);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
 
-  // Layer Visibility Filters
-  const [showCoverage, setShowCoverage] = useState<boolean>(true);
-  const [showCommLinks, setShowCommLinks] = useState<boolean>(true);
-  const [showRoutingPaths, setShowRoutingPaths] = useState<boolean>(true);
-  const [showClusters, setShowClusters] = useState<boolean>(true);
-  const [showTerrain, setShowTerrain] = useState<boolean>(true);
-  const [showEnergyState, setShowEnergyState] = useState<boolean>(true);
+  // HUD Popover Explanation States
+  const [hoveredHudCard, setHoveredHudCard] = useState<'phase1' | 'phase2' | null>(null);
+  const [empBannerText, setEmpBannerText] = useState<string | null>(null);
+  const empBannerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Mouse Parallax & 3D Hover Tooltip State
+  // Synchronized Event-Based Animation Timeline State
+  const roundPhaseTimerRef = useRef<number>(0);
+  const lastPlayedStageIdxRef = useRef<number>(-1);
+
+  // Live state refs for non-restarting 60 FPS animation loop
+  const isPlayingRef = useRef<boolean>(isPlaying);
+  isPlayingRef.current = isPlaying;
+  const simSpeedRef = useRef<number>(playbackSpeed);
+  simSpeedRef.current = playbackSpeed;
+  const visModeRef = useRef<VisMode>(visMode);
+  visModeRef.current = visMode;
+  const showDiskBubblesRef = useRef<boolean>(showDiskBubbles);
+  showDiskBubblesRef.current = showDiskBubbles;
+  const activeCamPresetRef = useRef<CameraMode>(activeCamPreset);
+  activeCamPresetRef.current = activeCamPreset;
+  const is360RotatingRef = useRef<boolean>(is360Rotating);
+  is360RotatingRef.current = is360Rotating;
+  const selectedNodeRef = useRef<DynamicNodeState | null>(selectedNode);
+  selectedNodeRef.current = selectedNode;
+  const hoveredNodeRef = useRef<DynamicNodeState | null>(hoveredNode);
+  hoveredNodeRef.current = hoveredNode;
+  const stepForwardRef = useRef(stepForward);
+  stepForwardRef.current = stepForward;
+
+  const [activeEventIndex, setActiveEventIndex] = useState<number>(0);
+  const [eventProgressPct, setEventProgressPct] = useState<number>(0);
+
+  // Mouse Parallax & 3D Hover State
   const [hoverScreenPos, setHoverScreenPos] = useState<{ x: number; y: number } | null>(null);
   const mouseNormRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const targetCameraPosRef = useRef<THREE.Vector3>(new THREE.Vector3(-45, 65, 95));
-
-  // Access UI mode, Presentation mode, and Story mode from context
-  const {
-    uiMode,
-    isPresentationMode,
-    setIsPresentationMode,
-    storyStep,
-    isStoryPlaying,
-    setIsStoryPlaying,
-    startStoryMode,
-    stopStoryMode,
-    nextStoryStep,
-    prevStoryStep
-  } = useWSNSimulation();
-
-  // 12-Step Story Tour Definitions
-  const storyStepsInfo = useMemo(() => [
-    {
-      step: 1,
-      title: 'Sensor Field Spatial Deployment',
-      subtitle: 'Step 01 / 12 • Physical Deployment',
-      explanation: '100 heterogeneous sensor devices are distributed across the 100m × 100m terrain with initial battery reserves (E0 = 0.5 J).',
-      cam: 'perspective' as CameraMode
-    },
-    {
-      step: 2,
-      title: 'Sensing Range Volumetric Coverage',
-      subtitle: 'Step 02 / 12 • Baseline Sensing',
-      explanation: 'Each active sensor emits an omnidirectional sensing radius (Rs = 20m), establishing 93.73% initial spatial field coverage.',
-      cam: 'top' as CameraMode
-    },
-    {
-      step: 3,
-      title: 'Redundant Overlap Detection',
-      subtitle: 'Step 03 / 12 • Overlap Penalty',
-      explanation: 'Random spatial scattering produces severe 82.51% sensing overlap redundancy in dense regions, wasting battery power.',
-      cam: 'isometric' as CameraMode
-    },
-    {
-      step: 4,
-      title: 'ANN 6-Feature Classifier Evaluation',
-      subtitle: 'Step 04 / 12 • Neural Classification',
-      explanation: 'Multilayer Perceptron (MLP) evaluates residual energy, sink distance, node degree, and overlap to classify redundant sensors.',
-      cam: 'perspective' as CameraMode
-    },
-    {
-      step: 5,
-      title: 'Dynamic Sleep Scheduling',
-      subtitle: 'Step 05 / 12 • Zero-Drain Sleep',
-      explanation: '44 redundant sensors transition into low-power sleep mode, completely eliminating unnecessary idle sensing drain.',
-      cam: 'isometric' as CameraMode
-    },
-    {
-      step: 6,
-      title: 'Coverage Preservation Guarantee (Δ ≤ 1.0%)',
-      subtitle: 'Step 06 / 12 • Strict Coverage Retention',
-      explanation: 'Active network retains 92.73% coverage (strictly within the Δ ≤ 1.0% tolerance boundary) with only 56 active sensors.',
-      cam: 'top' as CameraMode
-    },
-    {
-      step: 7,
-      title: 'Multi-Objective PSO Optimization',
-      subtitle: 'Step 07 / 12 • Swarm Metaheuristics',
-      explanation: 'Particle Swarm Optimization evaluates multi-objective fitness balancing battery reserves, sink distance, and cluster density.',
-      cam: 'isometric' as CameraMode
-    },
-    {
-      step: 8,
-      title: 'Voronoi Cluster Formation',
-      subtitle: 'Step 08 / 12 • Spatial Partitioning',
-      explanation: 'Field is partitioned into Voronoi territorial cells with dynamic Cluster Heads selected for minimum intra-cluster distance.',
-      cam: 'perspective' as CameraMode
-    },
-    {
-      step: 9,
-      title: 'Multi-Hop Routing Path Construction',
-      subtitle: 'Step 09 / 12 • Routing Topology',
-      explanation: 'Hybrid intra-cluster chains and inter-cluster multi-hop relay links are established toward the Base Station.',
-      cam: 'isometric' as CameraMode
-    },
-    {
-      step: 10,
-      title: 'Autonomous Data Packet Streaming',
-      subtitle: 'Step 10 / 12 • Data Telemetry',
-      explanation: 'Active sensors transmit 4000-bit data packets to Cluster Heads, which aggregate and stream telemetry directly to the Sink tower.',
-      cam: 'sink' as CameraMode
-    },
-    {
-      step: 11,
-      title: 'First-Order Radio Model Dissipation',
-      subtitle: 'Step 11 / 12 • Energy Consumption',
-      explanation: 'Radio dissipation physics consumes energy proportional to transmission distance squared (free space) or d^4 (multipath fading).',
-      cam: 'perspective' as CameraMode
-    },
-    {
-      step: 12,
-      title: 'Network Lifetime Extension (FND at 425 Rounds)',
-      subtitle: 'Step 12 / 12 • Empirical Lifetime',
-      explanation: 'First Node Dead (FND) is extended from 144.67 rounds (LEACH) to 425.33 rounds (+194.01% lifetime extension!), surviving 1000 rounds.',
-      cam: 'perspective' as CameraMode
-    }
-  ], []);
+  const targetCameraPosRef = useRef<THREE.Vector3>(new THREE.Vector3(-46, 68, 96));
 
   // Live Slider local states
   const [nodeCount, setNodeCount] = useState<number>(activeScenario.sensorCount || 70);
   const [sensingRad, setSensingRad] = useState<number>(activeScenario.sensingRadius || 19);
   const [commRad, setCommRad] = useState<number>(activeScenario.commRadius || 37);
-
-  // Additional Simulation Parameters
   const [initialEnergy, setInitialEnergy] = useState<number>(activeScenario.initialEnergy || 0.5);
   const [maxRounds, setMaxRounds] = useState<number>(activeScenario.simulationRounds || 1000);
 
@@ -186,34 +305,44 @@ export const WSN3DVisualizer: React.FC = () => {
     setMaxRounds(activeScenario.simulationRounds || 1000);
   }, [activeScenario]);
 
-  // Mesh refs for dynamic updates
-  const nodeGroupsRef = useRef<THREE.Group[]>([]);
-  const diskBubbleMeshesRef = useRef<THREE.Mesh[]>([]);
-  const energyRingsRef = useRef<THREE.Mesh[]>([]);
-  const linksGroupRef = useRef<THREE.Group | null>(null);
-  const routingGroupRef = useRef<THREE.Group | null>(null);
-  const packetsGroupRef = useRef<THREE.Group | null>(null);
-  const packetObjectsRef = useRef<{ mesh: THREE.Mesh; path: THREE.Vector3[]; progress: number; speed: number }[]>([]);
+  // Mesh & Object References for Dynamic Live Network Simulation
+  const nodeHandlesRef = useRef<Map<number, Node3DHandle>>(new Map());
+  const laserBeamsRef = useRef<DynamicLaserBeam[]>([]);
+  const packetStreamsRef = useRef<DynamicPacketStream[]>([]);
+  const groundRipplesRef = useRef<GroundRipple[]>([]);
+  const aggregationPulsesRef = useRef<AggregationPulse[]>([]);
+  const empShockwavesRef = useRef<EMPShockwave[]>([]);
+
+  // Permanent Top-Level Layer Groups
+  const nodesLayerGroupRef = useRef<THREE.Group | null>(null);
+  const coverageLayerGroupRef = useRef<THREE.Group | null>(null);
+  const voronoiLayerGroupRef = useRef<THREE.Group | null>(null);
+  const routingLayerGroupRef = useRef<THREE.Group | null>(null);
+  const packetsLayerGroupRef = useRef<THREE.Group | null>(null);
+  const effectsLayerGroupRef = useRef<THREE.Group | null>(null);
+  const labelsLayerGroupRef = useRef<THREE.Group | null>(null);
+  const forcesLayerGroupRef = useRef<THREE.Group | null>(null);
+  const annVectorsLayerGroupRef = useRef<THREE.Group | null>(null);
+  const overlapConcentrationLayerGroupRef = useRef<THREE.Group | null>(null);
+  const blindspotHolesLayerGroupRef = useRef<THREE.Group | null>(null);
+  const uiLayerGroupRef = useRef<THREE.Group | null>(null);
+
+  const selectionBeaconRef = useRef<THREE.Group | null>(null);
   const hoverHighlightMeshRef = useRef<THREE.Group | null>(null);
-  const terrainMeshRef = useRef<THREE.Mesh | null>(null);
-  const gridHelperRef = useRef<THREE.GridHelper | null>(null);
-  const clustersGroupRef = useRef<THREE.Group | null>(null);
+  const radarDishRef = useRef<THREE.Mesh | null>(null);
+  const sinkCoreRef = useRef<THREE.Mesh | null>(null);
+  const skyBeamRef = useRef<THREE.Mesh | null>(null);
+  const sinkImpactRingRef = useRef<THREE.Mesh | null>(null);
 
   // Coordinate mapper from scenario space (0..W, 0..H) to 3D scene (-50..50)
   const W = activeScenario.fieldWidth || 100;
   const H = activeScenario.fieldHeight || 100;
 
-  // Terrain height function for realistic subtle elevation
-  const getTerrainElevation = useCallback((x: number, z: number): number => {
-    return Math.sin(x * 0.04) * Math.cos(z * 0.04) * 1.8 + Math.sin(x * 0.1) * 0.5;
-  }, []);
-
   const to3DPos = useCallback((x: number, y: number, heightOffset = 0): THREE.Vector3 => {
     const sceneX = ((x / W) - 0.5) * 100;
     const sceneZ = -(((y / H) - 0.5) * 100);
-    const groundY = getTerrainElevation(sceneX, sceneZ);
-    return new THREE.Vector3(sceneX, groundY + heightOffset, sceneZ);
-  }, [W, H, getTerrainElevation]);
+    return new THREE.Vector3(sceneX, heightOffset, sceneZ);
+  }, [W, H]);
 
   const sink3DPos = useMemo(() => {
     const sx = ((activeScenario.sinkX / W) - 0.5) * 100;
@@ -221,303 +350,631 @@ export const WSN3DVisualizer: React.FC = () => {
     return new THREE.Vector3(sx, 16, sz);
   }, [activeScenario, W, H]);
 
-  // -----------------------------------------------------------------
-  // 1. THREE.JS INITIALIZATION & SCENE SETUP
-  // -----------------------------------------------------------------
+  // Helper: Create 3D text sprite for Node ID [N17]
+  const createTextSprite = useCallback((text: string, color: string = '#00E5FF'): THREE.Sprite => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = 'rgba(5, 10, 22, 0.88)';
+      ctx.beginPath();
+      if (typeof ctx.roundRect === 'function') {
+        ctx.roundRect(8, 8, 112, 48, 12);
+      } else {
+        ctx.rect(8, 8, 112, 48);
+      }
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 24px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, 64, 32);
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    const spriteMat = new THREE.SpriteMaterial({ 
+      map: texture, 
+      transparent: true, 
+      depthWrite: false, 
+      depthTest: false 
+    });
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.scale.set(3.8, 1.9, 1);
+    return sprite;
+  }, []);
+
+  // Helper: Create Corner Coordinate Sprites
+  const createCornerSprite = useCallback((text: string): THREE.Sprite => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 48;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = 'rgba(7, 14, 26, 0.75)';
+      ctx.fillRect(0, 0, 128, 48);
+      ctx.strokeStyle = '#1C3150';
+      ctx.strokeRect(0, 0, 128, 48);
+      ctx.fillStyle = '#64748B';
+      ctx.font = 'bold 20px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, 64, 24);
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    const spriteMat = new THREE.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
+    const sprite = new THREE.Sprite(spriteMat);
+    sprite.scale.set(7.5, 2.8, 1);
+    return sprite;
+  }, []);
+
+  // Visual Effects Emitters
+  const triggerArrivalRipple = useCallback((pos: THREE.Vector3, color = 0x00E5FF) => {
+    if (!effectsLayerGroupRef.current) return;
+    const geo = new THREE.RingGeometry(0.5, 1.2, 24);
+    geo.rotateX(-Math.PI / 2);
+    const mat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.95,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(pos.x, 0.15, pos.z);
+    effectsLayerGroupRef.current.add(mesh);
+
+    groundRipplesRef.current.push({
+      mesh,
+      scale: 1,
+      opacity: 0.95,
+      maxScale: 6.5,
+      speed: 0.12
+    });
+  }, []);
+
+  const triggerAggregationPulse = useCallback((pos: THREE.Vector3) => {
+    if (!effectsLayerGroupRef.current) return;
+    const geo = new THREE.SphereGeometry(1.2, 16, 16);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xF59E0B,
+      transparent: true,
+      opacity: 0.85,
+      wireframe: true,
+      depthWrite: false
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(pos);
+    effectsLayerGroupRef.current.add(mesh);
+
+    aggregationPulsesRef.current.push({
+      mesh,
+      scale: 1,
+      opacity: 0.85,
+      maxScale: 4.8,
+      speed: 0.15
+    });
+  }, []);
+
+  // -------------------------------------------------------------
+  // 1. INITIALIZE THREE.JS SCENE ONCE ON MOUNT
+  // -------------------------------------------------------------
   useEffect(() => {
     if (!containerRef.current) return;
-    const width = containerRef.current.clientWidth;
-    const height = containerRef.current.clientHeight;
 
-    // Scene with Midnight Blue Fog
+    // Create Scene, Camera, Renderer
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x050912);
-    scene.fog = new THREE.FogExp2(0x050912, 0.0035);
+    scene.background = new THREE.Color(0x050811);
+    scene.fog = new THREE.FogExp2(0x050811, 0.0035);
     sceneRef.current = scene;
 
-    // Camera
-    const camera = new THREE.PerspectiveCamera(45, width / height, 1, 1200);
-    camera.position.set(-45, 65, 95);
+    const width = containerRef.current.clientWidth || 800;
+    const height = containerRef.current.clientHeight || 600;
+
+    const camera = new THREE.PerspectiveCamera(42, width / height, 0.5, 1000);
+    camera.position.copy(targetCameraPosRef.current);
     cameraRef.current = camera;
 
-    // Renderer
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: true,
-      powerPreference: 'high-performance'
-    });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     rendererRef.current = renderer;
 
     containerRef.current.innerHTML = '';
     containerRef.current.appendChild(renderer.domElement);
 
-    // Orbit Controls
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
-    controls.dampingFactor = 0.06;
-    controls.maxPolarAngle = Math.PI / 2 - 0.02;
-    controls.minDistance = 15;
-    controls.maxDistance = 320;
+    controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI / 2 - 0.05;
+    controls.minDistance = 20;
+    controls.maxDistance = 260;
     controls.target.set(0, 0, 0);
     controlsRef.current = controls;
 
-    // Lighting (Midnight Blue Ambient + Cyan Directional + Violet Rim Light)
-    const ambientLight = new THREE.AmbientLight(0x0e1c31, 2.2);
+    // Lights
+    const ambientLight = new THREE.AmbientLight(0x1E293B, 1.2);
     scene.add(ambientLight);
 
     const dirLight = new THREE.DirectionalLight(0x00E5FF, 1.6);
-    dirLight.position.set(45, 90, 50);
+    dirLight.position.set(60, 100, 60);
     dirLight.castShadow = true;
     dirLight.shadow.mapSize.width = 1024;
     dirLight.shadow.mapSize.height = 1024;
     scene.add(dirLight);
 
-    const violetRim = new THREE.DirectionalLight(0x8B5CF6, 1.3);
-    violetRim.position.set(-50, 70, -60);
-    scene.add(violetRim);
+    const sinkPointLight = new THREE.PointLight(0xF59E0B, 2.8, 140);
+    sinkPointLight.position.copy(sink3DPos);
+    scene.add(sinkPointLight);
 
-    // Realistic 3D Terrain Mesh
-    const terrainGeo = new THREE.PlaneGeometry(100, 100, 48, 48);
-    terrainGeo.rotateX(-Math.PI / 2);
-    const posAttr = terrainGeo.attributes.position;
-    for (let i = 0; i < posAttr.count; i++) {
-      const vx = posAttr.getX(i);
-      const vz = posAttr.getZ(i);
-      posAttr.setY(i, getTerrainElevation(vx, vz));
-    }
-    terrainGeo.computeVertexNormals();
-
-    const terrainMat = new THREE.MeshStandardMaterial({
-      color: 0x091426,
+    // Ground Plane & Grid
+    const groundGeo = new THREE.PlaneGeometry(100, 100);
+    groundGeo.rotateX(-Math.PI / 2);
+    const groundMat = new THREE.MeshStandardMaterial({
+      color: 0x070E1A,
       roughness: 0.85,
-      metalness: 0.2,
-      flatShading: true
+      metalness: 0.2
     });
-    const terrainMesh = new THREE.Mesh(terrainGeo, terrainMat);
-    terrainMesh.receiveShadow = true;
-    scene.add(terrainMesh);
-    terrainMeshRef.current = terrainMesh;
+    const groundMesh = new THREE.Mesh(groundGeo, groundMat);
+    groundMesh.receiveShadow = true;
+    groundMesh.position.y = 0;
+    scene.add(groundMesh);
 
-    // Technical Coordinate Subgrid
-    const gridHelper = new THREE.GridHelper(100, 20, 0x00E5FF, 0x1C3150);
-    gridHelper.position.set(0, 0.08, 0);
-    (gridHelper.material as THREE.Material).transparent = true;
-    (gridHelper.material as THREE.Material).opacity = 0.35;
+    const gridHelper = new THREE.GridHelper(100, 20, 0x1C3150, 0x0F1B2E);
+    gridHelper.position.y = 0.02;
     scene.add(gridHelper);
-    gridHelperRef.current = gridHelper;
 
-    // Outer Perimeter Boundary Box
-    const rimGeo = new THREE.BoxGeometry(100.4, 0.5, 100.4);
-    const rimMat = new THREE.MeshBasicMaterial({ color: 0x00E5FF, wireframe: true, transparent: true, opacity: 0.3 });
-    const rimMesh = new THREE.Mesh(rimGeo, rimMat);
-    rimMesh.position.set(0, 0.25, 0);
-    scene.add(rimMesh);
+    // Boundary Frame
+    const frameGeo = new THREE.BoxGeometry(100.8, 0.4, 100.8);
+    const frameEdges = new THREE.EdgesGeometry(frameGeo);
+    const frameLineMat = new THREE.LineBasicMaterial({ color: 0x00E5FF, transparent: true, opacity: 0.45 });
+    const frameLines = new THREE.LineSegments(frameEdges, frameLineMat);
+    frameLines.position.y = 0.2;
+    scene.add(frameLines);
 
-    // Futuristic Base Station / Sink Tower
+    // Corner Sprites
+    const c1 = createCornerSprite('(0, 0)');
+    c1.position.set(-50, 1.2, 50);
+    scene.add(c1);
+
+    const c2 = createCornerSprite('(100, 0)');
+    c2.position.set(50, 1.2, 50);
+    scene.add(c2);
+
+    const c3 = createCornerSprite('(0, 100)');
+    c3.position.set(-50, 1.2, -50);
+    scene.add(c3);
+
+    const c4 = createCornerSprite('(100, 100)');
+    c4.position.set(50, 1.2, -50);
+    scene.add(c4);
+
+    // Base Station (Sink) Tower Geometry
     const bsGroup = new THREE.Group();
-    bsGroup.position.copy(sink3DPos);
+    bsGroup.position.set(sink3DPos.x, 0, sink3DPos.z);
 
-    const pylonGeo = new THREE.CylinderGeometry(1.5, 3.8, 16, 12);
-    const pylonMat = new THREE.MeshStandardMaterial({ color: 0x0B162A, metalness: 0.9, roughness: 0.2 });
-    const pylonMesh = new THREE.Mesh(pylonGeo, pylonMat);
-    pylonMesh.position.y = -6;
-    pylonMesh.castShadow = true;
-    bsGroup.add(pylonMesh);
+    const bsBaseGeo = new THREE.CylinderGeometry(3.5, 4.5, 2.5, 24);
+    const bsBaseMat = new THREE.MeshStandardMaterial({ color: 0x1C2B40, metalness: 0.9, roughness: 0.2 });
+    const bsBase = new THREE.Mesh(bsBaseGeo, bsBaseMat);
+    bsBase.position.y = 1.25;
+    bsGroup.add(bsBase);
 
-    const coreGeo = new THREE.SphereGeometry(2.2, 24, 24);
-    const coreMat = new THREE.MeshStandardMaterial({ 
-      color: 0x00E5FF, 
-      emissive: 0x00E5FF, 
-      emissiveIntensity: 1.5,
-      roughness: 0.1
-    });
-    const coreMesh = new THREE.Mesh(coreGeo, coreMat);
-    coreMesh.position.y = 2.5;
-    bsGroup.add(coreMesh);
-
-    const radarDishGeo = new THREE.TorusGeometry(3.6, 0.35, 12, 32);
-    const radarDishMat = new THREE.MeshStandardMaterial({ color: 0x00E5FF, metalness: 0.8, roughness: 0.2 });
-    const radarDish = new THREE.Mesh(radarDishGeo, radarDishMat);
+    const dishGeo = new THREE.CylinderGeometry(3.2, 0.6, 1.2, 24, 1, true);
+    const dishMat = new THREE.MeshStandardMaterial({ color: 0xF59E0B, metalness: 0.8, roughness: 0.3, side: THREE.DoubleSide });
+    const radarDish = new THREE.Mesh(dishGeo, dishMat);
+    radarDish.position.y = 9.5;
     radarDish.rotation.x = Math.PI / 4;
-    radarDish.position.y = 3.2;
     bsGroup.add(radarDish);
+    radarDishRef.current = radarDish;
 
-    const mastGeo = new THREE.CylinderGeometry(0.25, 0.25, 8, 8);
-    const mastMat = new THREE.MeshStandardMaterial({ color: 0x1C3150, metalness: 0.9 });
+    const coreGeo = new THREE.SphereGeometry(1.6, 24, 24);
+    const coreMat = new THREE.MeshStandardMaterial({ color: 0xF59E0B, emissive: 0xF59E0B, emissiveIntensity: 2.2 });
+    const sinkCore = new THREE.Mesh(coreGeo, coreMat);
+    sinkCore.position.y = 5.5;
+    bsGroup.add(sinkCore);
+    sinkCoreRef.current = sinkCore;
+
+    const mastGeo = new THREE.CylinderGeometry(0.2, 0.4, 12, 12);
+    const mastMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.8 });
     const mast = new THREE.Mesh(mastGeo, mastMat);
-    mast.position.y = 8.5;
+    mast.position.y = 7.0;
     bsGroup.add(mast);
 
-    const beaconTipGeo = new THREE.SphereGeometry(1.2, 16, 16);
-    const beaconTipMat = new THREE.MeshBasicMaterial({ color: 0x00E5FF });
+    const beaconTipGeo = new THREE.SphereGeometry(1.3, 16, 16);
+    const beaconTipMat = new THREE.MeshBasicMaterial({ color: 0xF59E0B });
     const beaconTip = new THREE.Mesh(beaconTipGeo, beaconTipMat);
-    beaconTip.position.y = 12.8;
+    beaconTip.position.y = 13.5;
     bsGroup.add(beaconTip);
 
-    const skyBeamGeo = new THREE.CylinderGeometry(0.35, 0.8, sink3DPos.y + 35, 16);
+    // Sky Beam Rising into Atmosphere
+    const skyBeamGeo = new THREE.CylinderGeometry(0.35, 0.85, sink3DPos.y + 50, 16);
     const skyBeamMat = new THREE.MeshBasicMaterial({
-      color: 0x00E5FF,
+      color: 0xFF2B6D,
       transparent: true,
-      opacity: 0.55,
+      opacity: 0.45,
       side: THREE.DoubleSide
     });
     const skyBeam = new THREE.Mesh(skyBeamGeo, skyBeamMat);
-    skyBeam.position.set(0, -(sink3DPos.y + 35) / 2 + 12.8, 0);
+    skyBeam.position.set(0, -(sink3DPos.y + 50) / 2 + 13.5, 0);
     bsGroup.add(skyBeam);
+    skyBeamRef.current = skyBeam;
 
-    const impactRingGeo = new THREE.RingGeometry(2.0, 3.4, 32);
+    // Ground Impact Ring
+    const impactRingGeo = new THREE.RingGeometry(2.2, 3.8, 32);
     const impactRingMat = new THREE.MeshBasicMaterial({
-      color: 0x00E5FF,
+      color: 0xF59E0B,
       transparent: true,
-      opacity: 0.7,
+      opacity: 0.65,
       side: THREE.DoubleSide
     });
     const impactRing = new THREE.Mesh(impactRingGeo, impactRingMat);
     impactRing.rotation.x = -Math.PI / 2;
-    impactRing.position.set(0, -sink3DPos.y + 0.1, 0);
+    impactRing.position.set(0, 0.1, 0);
     bsGroup.add(impactRing);
+    sinkImpactRingRef.current = impactRing;
+
+    // Base Station Label
+    const bsSprite = createTextSprite('BASE STATION', '#F59E0B');
+    bsSprite.position.set(0, 16.5, 0);
+    bsSprite.scale.set(7.5, 3.75, 1);
+    bsGroup.add(bsSprite);
 
     scene.add(bsGroup);
 
-    // Dynamic Groups for Links, Routing, Clusters, Packets
-    const linksGroup = new THREE.Group();
-    scene.add(linksGroup);
-    linksGroupRef.current = linksGroup;
+    // -------------------------------------------------------------
+    // PERMANENT SCENE HIERARCHY GROUPS
+    // -------------------------------------------------------------
+    const overlapGroup = new THREE.Group();
+    overlapGroup.renderOrder = 1;
+    scene.add(overlapGroup);
+    overlapConcentrationLayerGroupRef.current = overlapGroup;
 
-    const routingGroup = new THREE.Group();
-    scene.add(routingGroup);
-    routingGroupRef.current = routingGroup;
+    const blindspotGroup = new THREE.Group();
+    blindspotGroup.renderOrder = 2;
+    scene.add(blindspotGroup);
+    blindspotHolesLayerGroupRef.current = blindspotGroup;
 
-    const clustersGroup = new THREE.Group();
-    scene.add(clustersGroup);
-    clustersGroupRef.current = clustersGroup;
+    const voronoiLayerGroup = new THREE.Group();
+    voronoiLayerGroup.renderOrder = 3;
+    scene.add(voronoiLayerGroup);
+    voronoiLayerGroupRef.current = voronoiLayerGroup;
 
-    const packetsGroup = new THREE.Group();
-    scene.add(packetsGroup);
-    packetsGroupRef.current = packetsGroup;
+    const coverageLayerGroup = new THREE.Group();
+    coverageLayerGroup.renderOrder = 4;
+    scene.add(coverageLayerGroup);
+    coverageLayerGroupRef.current = coverageLayerGroup;
 
-    // 3D Hover Beacon Highlight Group
-    const hoverGroup = new THREE.Group();
-    const hoverRingGeo = new THREE.RingGeometry(2.2, 2.8, 32);
-    const hoverRingMat = new THREE.MeshBasicMaterial({
+    const routingLayerGroup = new THREE.Group();
+    routingLayerGroup.renderOrder = 5;
+    scene.add(routingLayerGroup);
+    routingLayerGroupRef.current = routingLayerGroup;
+
+    const nodesLayerGroup = new THREE.Group();
+    nodesLayerGroup.renderOrder = 6;
+    scene.add(nodesLayerGroup);
+    nodesLayerGroupRef.current = nodesLayerGroup;
+
+    const annVectorsGroup = new THREE.Group();
+    annVectorsGroup.renderOrder = 7;
+    scene.add(annVectorsGroup);
+    annVectorsLayerGroupRef.current = annVectorsGroup;
+
+    const packetsLayerGroup = new THREE.Group();
+    packetsLayerGroup.renderOrder = 8;
+    scene.add(packetsLayerGroup);
+    packetsLayerGroupRef.current = packetsLayerGroup;
+
+    const effectsLayerGroup = new THREE.Group();
+    effectsLayerGroup.renderOrder = 9;
+    scene.add(effectsLayerGroup);
+    effectsLayerGroupRef.current = effectsLayerGroup;
+
+    const forcesLayerGroup = new THREE.Group();
+    forcesLayerGroup.renderOrder = 10;
+    scene.add(forcesLayerGroup);
+    forcesLayerGroupRef.current = forcesLayerGroup;
+
+    const uiLayerGroup = new THREE.Group();
+    uiLayerGroup.renderOrder = 11;
+    scene.add(uiLayerGroup);
+    uiLayerGroupRef.current = uiLayerGroup;
+
+    const labelsLayerGroup = new THREE.Group();
+    labelsLayerGroup.renderOrder = 12;
+    scene.add(labelsLayerGroup);
+    labelsLayerGroupRef.current = labelsLayerGroup;
+
+    // Selection Beacon Group
+    const selectionGroup = new THREE.Group();
+    const selRingGeo = new THREE.RingGeometry(2.5, 3.2, 32);
+    const selRingMat = new THREE.MeshBasicMaterial({
       color: 0x00E5FF,
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.9
+      opacity: 0.95,
+      depthWrite: false
     });
-    const hoverRing = new THREE.Mesh(hoverRingGeo, hoverRingMat);
-    hoverRing.rotation.x = -Math.PI / 2;
-    hoverRing.position.y = 0.2;
-    hoverGroup.add(hoverRing);
+    const selRing = new THREE.Mesh(selRingGeo, selRingMat);
+    selRing.rotation.x = -Math.PI / 2;
+    selRing.position.y = 0.12;
+    selectionGroup.add(selRing);
+    selectionGroup.visible = false;
+    scene.add(selectionGroup);
+    selectionBeaconRef.current = selectionGroup;
 
-    const hoverBeamGeo = new THREE.CylinderGeometry(0.1, 0.1, 14, 8);
-    const hoverBeamMat = new THREE.MeshBasicMaterial({
-      color: 0x00E5FF,
+    // Hover Highlight Group
+    const hoverGroup = new THREE.Group();
+    const hRingGeo = new THREE.RingGeometry(2.0, 2.5, 32);
+    const hRingMat = new THREE.MeshBasicMaterial({
+      color: 0xFFD700,
+      side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.6
+      opacity: 0.85,
+      depthWrite: false
     });
-    const hoverBeam = new THREE.Mesh(hoverBeamGeo, hoverBeamMat);
-    hoverBeam.position.y = 7;
-    hoverGroup.add(hoverBeam);
-
+    const hRing = new THREE.Mesh(hRingGeo, hRingMat);
+    hRing.rotation.x = -Math.PI / 2;
+    hRing.position.y = 0.14;
+    hoverGroup.add(hRing);
     hoverGroup.visible = false;
     scene.add(hoverGroup);
     hoverHighlightMeshRef.current = hoverGroup;
 
     // Resize Handler
     const handleResize = () => {
-      if (!containerRef.current || !renderer || !camera) return;
+      if (!containerRef.current || !cameraRef.current || !rendererRef.current) return;
       const w = containerRef.current.clientWidth;
       const h = containerRef.current.clientHeight;
-      camera.aspect = w / h;
-      camera.updateProjectionMatrix();
-      renderer.setSize(w, h);
+      cameraRef.current.aspect = w / h;
+      cameraRef.current.updateProjectionMatrix();
+      rendererRef.current.setSize(w, h);
     };
     window.addEventListener('resize', handleResize);
 
-    // Main Render Loop with Camera Lerp, Mouse Parallax and Flowing Packets
-    const clock = new THREE.Clock();
+    // -------------------------------------------------------------
+    // CONTINUOUS 60 FPS ANIMATION LOOP (ZERO FLICKER)
+    // -------------------------------------------------------------
+    let lastTime = performance.now();
+
     const animate = () => {
       animationFrameId.current = requestAnimationFrame(animate);
-      const elapsedTime = clock.getElapsedTime() * simSpeed;
 
-      // Radar dish rotation
-      radarDish.rotation.z = elapsedTime * 1.5;
-      radarDish.rotation.y = elapsedTime * 0.8;
+      const now = performance.now();
+      const dt = Math.min((now - lastTime) / 1000, 0.1);
+      lastTime = now;
 
-      // Pulse skybeam and ground ring
-      skyBeamMat.opacity = 0.4 + Math.sin(elapsedTime * 6) * 0.2;
-      impactRing.scale.setScalar(1 + Math.sin(elapsedTime * 4) * 0.15);
+      const currentSpeed = simSpeedRef.current;
+      const currentIsPlaying = isPlayingRef.current;
+      const currentVisMode = visModeRef.current;
+      const currentShowDisks = showDiskBubblesRef.current;
 
-      // Camera Smooth Follow & Transitions
-      if (controls && camera) {
-        if (activeCamPreset === 'follow_packet' && packetObjectsRef.current.length > 0) {
-          const leadPkt = packetObjectsRef.current[0].mesh.position;
-          targetCameraPosRef.current.set(leadPkt.x - 18, leadPkt.y + 16, leadPkt.z + 24);
-          controls.target.lerp(leadPkt, 0.08);
-        } else if (activeCamPreset === 'follow_node' && selectedNode) {
-          const n3D = to3DPos(selectedNode.x, selectedNode.y, 2);
-          targetCameraPosRef.current.set(n3D.x - 14, n3D.y + 12, n3D.z + 18);
-          controls.target.lerp(n3D, 0.08);
-        } else if (is360Rotating || activeCamPreset === 'orbit') {
-          controls.autoRotate = true;
-          controls.autoRotateSpeed = 1.8;
-        } else {
-          controls.autoRotate = false;
+      // 1. Synchronized Timeline Progression
+      const roundDurationSeconds = 10.0 / Math.max(0.05, currentSpeed);
+
+      if (currentIsPlaying) {
+        const deltaPhase = dt / roundDurationSeconds;
+        roundPhaseTimerRef.current += deltaPhase;
+
+        if (roundPhaseTimerRef.current >= 1.0) {
+          roundPhaseTimerRef.current = 0.0;
+          stepForwardRef.current(1);
         }
-
-        // Smooth camera lerp to target position
-        camera.position.lerp(targetCameraPosRef.current, 0.05);
-
-        // Smooth Mouse Parallax Tilt (when not rotating or tracking)
-        const mx = mouseNormRef.current.x;
-        const my = mouseNormRef.current.y;
-        if (!is360Rotating && activeCamPreset !== 'orbit' && activeCamPreset !== 'follow_packet' && activeCamPreset !== 'follow_node') {
-          if (Math.abs(mx) > 0.01 || Math.abs(my) > 0.01) {
-            camera.position.x += mx * 0.25;
-            camera.position.y -= my * 0.2;
-          }
-        }
-
-        controls.update();
       }
 
-      // Animate flowing packets along multi-hop routes
-      if (packetObjectsRef.current.length > 0) {
-        packetObjectsRef.current.forEach((pkt) => {
-          pkt.progress += pkt.speed * simSpeed;
-          if (pkt.progress > 1.0) pkt.progress = 0;
+      const phase = roundPhaseTimerRef.current;
+      const currentStageIdx = EVENT_STAGES.findIndex(s => phase >= s.startP && phase < s.endP);
+      const safeStageIdx = currentStageIdx >= 0 ? currentStageIdx : 0;
+      setActiveEventIndex(safeStageIdx);
 
-          if (pkt.path.length >= 2) {
-            const numSegments = pkt.path.length - 1;
-            const segmentProgress = pkt.progress * numSegments;
-            const currentSeg = Math.min(Math.floor(segmentProgress), numSegments - 1);
-            const segT = segmentProgress - currentSeg;
+      const stg = EVENT_STAGES[safeStageIdx];
+      const stageProgress = Math.min(100, Math.max(0, Math.round(((phase - stg.startP) / (stg.endP - stg.startP)) * 100)));
+      setEventProgressPct(stageProgress);
 
-            const p0 = pkt.path[currentSeg];
-            const p1 = pkt.path[currentSeg + 1];
-            pkt.mesh.position.lerpVectors(p0, p1, segT);
+      // Sound trigger on discrete stage entry & context sync
+      if (lastPlayedStageIdxRef.current !== safeStageIdx) {
+        lastPlayedStageIdxRef.current = safeStageIdx;
+        setCurrentEventStageIndex(safeStageIdx);
+        setCurrentEventStageLabel(stg.name);
+
+        if (currentIsPlaying) {
+          if (safeStageIdx === 0) soundFX.playPSOBeginSound();
+          else if (safeStageIdx === 1) soundFX.playClickSound();
+          else if (safeStageIdx === 2) soundFX.playPacketSound();
+          else if (safeStageIdx === 3) {
+            soundFX.playPacketArrivalSound();
+            activeClusterHeads.forEach(cid => {
+              const chH = nodeHandlesRef.current.get(cid);
+              if (chH) triggerArrivalRipple(chH.currentPos, 0x00E5FF);
+            });
           }
-        });
+          else if (safeStageIdx === 4) soundFX.playImprovementSound();
+          else if (safeStageIdx === 5) soundFX.playPacketSound();
+          else if (safeStageIdx === 6) {
+            soundFX.playSinkReceiveSound();
+            triggerArrivalRipple(sink3DPos, 0xF59E0B);
+          }
+          else if (safeStageIdx === 7) soundFX.playEnergyUpdateSound();
+        }
       }
 
-      // Animate physical sensor device pulse & CH beacons
-      nodeGroupsRef.current.forEach((group, i) => {
-        if (group && group.userData && group.userData.node) {
-          const n = group.userData.node as DynamicNodeState;
-          if (n.isAlive) {
-            const baseY = group.userData.baseY || 1.0;
-            group.position.y = baseY + Math.sin(elapsedTime * 2.5 + i * 0.4) * 0.15;
-            if (group.userData.isCH) {
-              group.scale.setScalar(1.2 + Math.sin(elapsedTime * 4 + i) * 0.1);
-            }
-          }
+      // 2. Camera Controls & Parallax
+      if (controlsRef.current) {
+        controlsRef.current.update();
+      }
+
+      // Parallax slight tilt
+      if (cameraRef.current && activeCamPresetRef.current === 'perspective' && !is360RotatingRef.current) {
+        const targetX = targetCameraPosRef.current.x + mouseNormRef.current.x * 3.5;
+        const targetY = targetCameraPosRef.current.y - mouseNormRef.current.y * 2.5;
+        cameraRef.current.position.x += (targetX - cameraRef.current.position.x) * 0.05;
+        cameraRef.current.position.y += (targetY - cameraRef.current.position.y) * 0.05;
+      }
+
+      // 3. Base Station Radar & Pulse Animations
+      if (radarDishRef.current) {
+        radarDishRef.current.rotation.y += 0.02 * currentSpeed;
+      }
+      if (sinkCoreRef.current) {
+        const pScale = 1.0 + Math.sin(now * 0.005) * 0.12;
+        sinkCoreRef.current.scale.set(pScale, pScale, pScale);
+      }
+      if (sinkImpactRingRef.current) {
+        const rScale = 1.0 + Math.sin(now * 0.004) * 0.2;
+        sinkImpactRingRef.current.scale.set(rScale, rScale, rScale);
+      }
+
+      // 4. Smooth In-Place Node Position Interpolation (No Teleporting)
+      nodeHandlesRef.current.forEach((handle) => {
+        handle.currentPos.lerp(handle.targetPos, Math.min(1.0, 0.08 * currentSpeed));
+        handle.group.position.set(handle.currentPos.x, handle.baseY, handle.currentPos.z);
+        if (handle.diskMesh) {
+          handle.diskMesh.position.set(handle.currentPos.x, 0.06, handle.currentPos.z);
+        }
+        if (handle.diskRingMesh) {
+          handle.diskRingMesh.position.set(handle.currentPos.x, 0.07, handle.currentPos.z);
+        }
+        if (handle.sprite) {
+          handle.sprite.position.set(handle.currentPos.x, handle.baseY + (handle.isCH ? 4.8 : 3.6), handle.currentPos.z);
         }
       });
+
+      // 5. Dynamic Laser Communication Beams (Freeze in place when paused)
+      laserBeamsRef.current.forEach((beam) => {
+        const [startP, endP] = beam.activePhase;
+        const isPhaseActive = phase >= startP && phase < endP;
+        const beamCoreMat = beam.coreLine.material as THREE.LineBasicMaterial;
+        const beamHaloMat = beam.haloLine.material as THREE.LineBasicMaterial;
+
+        if (isPhaseActive) {
+          const subPhase = (phase - startP) / (endP - startP);
+          const pulse = Math.sin(subPhase * Math.PI);
+          beamCoreMat.opacity = Math.max(0.4, pulse * 0.95);
+          beamHaloMat.opacity = Math.max(0.2, pulse * 0.65);
+          beam.coreLine.visible = true;
+          beam.haloLine.visible = true;
+        } else {
+          beamCoreMat.opacity = 0;
+          beamHaloMat.opacity = 0;
+          beam.coreLine.visible = false;
+          beam.haloLine.visible = false;
+        }
+      });
+
+      // 6. Multi-Particle Swarm Laser Stream Interpolation (Freeze in place when paused)
+      packetStreamsRef.current.forEach((stream) => {
+        const [startP, endP] = stream.activePhase;
+        const isPhaseActive = phase >= startP && phase < endP;
+
+        if (isPhaseActive && stream.path.length >= 2) {
+          stream.group.visible = true;
+          const subProgress = Math.max(0, Math.min(1, (phase - startP) / (endP - startP)));
+
+          stream.particles.forEach((p) => {
+            const particleT = Math.max(0, Math.min(1, subProgress + p.offsetT));
+            const pathIdx = particleT * (stream.path.length - 1);
+            const lowIdx = Math.floor(pathIdx);
+            const highIdx = Math.min(stream.path.length - 1, lowIdx + 1);
+            const frac = pathIdx - lowIdx;
+
+            const p1 = stream.path[lowIdx];
+            const p2 = stream.path[highIdx];
+            const px = p1.x + (p2.x - p1.x) * frac + p.lateralX;
+            const py = p1.y + (p2.y - p1.y) * frac + p.lateralY;
+            const pz = p1.z + (p2.z - p1.z) * frac + p.lateralZ;
+
+            p.mesh.position.set(px, py, pz);
+            const scale = Math.sin(particleT * Math.PI) * p.baseScale;
+            p.mesh.scale.set(Math.max(0.1, scale), Math.max(0.1, scale), Math.max(0.1, scale));
+          });
+        } else {
+          stream.group.visible = false;
+        }
+      });
+
+      // 7. Ground Ripples & Particle Pulse Updates
+      if (groundRipplesRef.current.length > 0) {
+        for (let i = groundRipplesRef.current.length - 1; i >= 0; i--) {
+          const r = groundRipplesRef.current[i];
+          r.scale += r.speed;
+          r.opacity -= 0.025;
+          r.mesh.scale.set(r.scale, r.scale, 1);
+          (r.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, r.opacity);
+
+          if (r.opacity <= 0 || r.scale >= r.maxScale) {
+            effectsLayerGroupRef.current?.remove(r.mesh);
+            groundRipplesRef.current.splice(i, 1);
+          }
+        }
+      }
+
+      if (aggregationPulsesRef.current.length > 0) {
+        for (let i = aggregationPulsesRef.current.length - 1; i >= 0; i--) {
+          const p = aggregationPulsesRef.current[i];
+          p.scale += p.speed;
+          p.opacity -= 0.03;
+          p.mesh.scale.set(p.scale, p.scale, p.scale);
+          (p.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, p.opacity);
+
+          if (p.opacity <= 0 || p.scale >= p.maxScale) {
+            effectsLayerGroupRef.current?.remove(p.mesh);
+            aggregationPulsesRef.current.splice(i, 1);
+          }
+        }
+      }
+
+      // 8. EMP Shockwave Expansion
+      if (empShockwavesRef.current.length > 0) {
+        for (let i = empShockwavesRef.current.length - 1; i >= 0; i--) {
+          const sw = empShockwavesRef.current[i];
+          sw.currentRadius += sw.speed;
+          sw.opacity -= 0.02;
+          const currentScale = sw.currentRadius;
+          sw.mesh.scale.set(currentScale, currentScale, currentScale);
+          (sw.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, sw.opacity);
+
+          if (sw.opacity <= 0 || sw.currentRadius >= sw.maxRadius) {
+            effectsLayerGroupRef.current?.remove(sw.mesh);
+            empShockwavesRef.current.splice(i, 1);
+          }
+        }
+      }
+
+      // 9. Update Selection Beacon Position
+      if (selectionBeaconRef.current) {
+        const curSel = selectedNodeRef.current;
+        if (curSel) {
+          const sHandle = nodeHandlesRef.current.get(curSel.node_id);
+          if (sHandle) {
+            selectionBeaconRef.current.position.set(sHandle.currentPos.x, 0, sHandle.currentPos.z);
+            selectionBeaconRef.current.visible = true;
+          }
+        } else {
+          selectionBeaconRef.current.visible = false;
+        }
+      }
+
+      // 10. Update Layer Visibilities
+      if (coverageLayerGroupRef.current) {
+        coverageLayerGroupRef.current.visible = currentShowDisks && (currentVisMode === 'full' || currentVisMode === 'coverage');
+      }
+      if (voronoiLayerGroupRef.current) {
+        voronoiLayerGroupRef.current.visible = (currentVisMode === 'full' || currentVisMode === 'voronoi' || voronoiMode === '3d');
+      }
+      if (routingLayerGroupRef.current) {
+        routingLayerGroupRef.current.visible = (currentVisMode === 'full' || currentVisMode === 'routing');
+      }
+      if (packetsLayerGroupRef.current) {
+        packetsLayerGroupRef.current.visible = (currentVisMode === 'full' || currentVisMode === 'routing');
+      }
+      if (labelsLayerGroupRef.current) {
+        labelsLayerGroupRef.current.visible = true;
+      }
 
       renderer.render(scene, camera);
     };
@@ -531,43 +988,282 @@ export const WSN3DVisualizer: React.FC = () => {
         containerRef.current.innerHTML = '';
       }
     };
-  }, [sink3DPos, is360Rotating, activeCamPreset, simSpeed, getTerrainElevation, selectedNode, to3DPos]);
+  }, [sink3DPos, createCornerSprite, createTextSprite, triggerArrivalRipple, triggerAggregationPulse, to3DPos, voronoiMode]);
 
-  // -----------------------------------------------------------------
-  // 2. REBUILD REALISTIC 3D SENSOR NODES, VOLUMETRIC DOMES, & PROTOCOL ROUTING
-  // -----------------------------------------------------------------
+  // -------------------------------------------------------------
+  // 2. PERSISTENT SENSOR NODE HARDWARE INITIALIZATION / SYNC
+  // -------------------------------------------------------------
   useEffect(() => {
-    const scene = sceneRef.current;
-    if (!scene || nodes.length === 0) return;
+    const nodesGroup = nodesLayerGroupRef.current;
+    const coverageGroup = coverageLayerGroupRef.current;
+    const labelsGroup = labelsLayerGroupRef.current;
+    if (!nodesGroup || !coverageGroup || !labelsGroup || nodes.length === 0) return;
 
-    // Clear previous meshes
-    nodeGroupsRef.current.forEach((g) => scene.remove(g));
-    diskBubbleMeshesRef.current.forEach((m) => scene.remove(m));
-    energyRingsRef.current.forEach((m) => scene.remove(m));
-    nodeGroupsRef.current = [];
-    diskBubbleMeshesRef.current = [];
-    energyRingsRef.current = [];
-
-    if (linksGroupRef.current) linksGroupRef.current.clear();
-    if (routingGroupRef.current) routingGroupRef.current.clear();
-    if (clustersGroupRef.current) clustersGroupRef.current.clear();
-    if (packetsGroupRef.current) packetsGroupRef.current.clear();
-    packetObjectsRef.current = [];
-
-    // Shared Geometries for physical sensor device
-    const baseCylinderGeo = new THREE.CylinderGeometry(0.9, 1.1, 0.6, 16);
-    const ledDomeGeo = new THREE.SphereGeometry(0.65, 16, 16);
-    const antennaMastGeo = new THREE.CylinderGeometry(0.06, 0.06, 1.4, 8);
-    const antennaBeaconGeo = new THREE.SphereGeometry(0.25, 8, 8);
+    // Standard Geometries
+    const baseCylinderGeo = new THREE.CylinderGeometry(0.9, 1.15, 0.55, 16);
+    const ledDomeGeo = new THREE.SphereGeometry(0.55, 16, 16);
+    const antennaMastGeo = new THREE.CylinderGeometry(0.06, 0.06, 1.6, 8);
+    const antennaBeaconGeo = new THREE.SphereGeometry(0.24, 8, 8);
     
     // Cluster Head Geometries
-    const chBaseGeo = new THREE.CylinderGeometry(1.3, 1.6, 0.9, 16);
-    const chLedGeo = new THREE.SphereGeometry(1.0, 20, 20);
-    const chMastGeo = new THREE.CylinderGeometry(0.09, 0.09, 2.2, 8);
-    const chBeaconGeo = new THREE.SphereGeometry(0.45, 12, 12);
+    const chBaseGeo = new THREE.CylinderGeometry(1.35, 1.65, 0.85, 16);
+    const chLedGeo = new THREE.SphereGeometry(0.95, 20, 20);
+    const chMastGeo = new THREE.CylinderGeometry(0.09, 0.09, 2.4, 8);
+    const chBeaconGeo = new THREE.SphereGeometry(0.42, 12, 12);
+    const chCrownGeo = new THREE.RingGeometry(1.8, 2.4, 6);
 
-    const diskBubbleGeo = new THREE.SphereGeometry(sensingRad * (100 / W) * 0.85, 24, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-    const energyRingGeo = new THREE.RingGeometry(1.6, 2.1, 24);
+    // Sensing Disk Geometries (Subtle Translucent Disks & Thin Rings)
+    const Rs3D = sensingRad * (100 / W);
+    const sensingDiskGeo = new THREE.CircleGeometry(Rs3D, 36);
+    sensingDiskGeo.rotateX(-Math.PI / 2);
+    const sensingRingGeo = new THREE.RingGeometry(Rs3D - 0.25, Rs3D, 48);
+    sensingRingGeo.rotateX(-Math.PI / 2);
+
+    const currentNodeIds = new Set(nodes.map(n => n.node_id));
+
+    // Remove any handles for nodes no longer in scenario
+    nodeHandlesRef.current.forEach((handle, id) => {
+      if (!currentNodeIds.has(id)) {
+        nodesGroup.remove(handle.group);
+        coverageGroup.remove(handle.diskMesh);
+        coverageGroup.remove(handle.diskRingMesh);
+        labelsGroup.remove(handle.sprite);
+        nodeHandlesRef.current.delete(id);
+      }
+    });
+
+    // Create or update handles for each node
+    nodes.forEach((node) => {
+      const isCH = activeClusterHeads.includes(node.node_id);
+      const targetPos = to3DPos(node.x, node.y, isCH ? 2.0 : 0.8);
+      const isSelected = selectedNode?.node_id === node.node_id;
+
+      let handle = nodeHandlesRef.current.get(node.node_id);
+
+      if (!handle) {
+        // Create 3D Sensor Hardware Group
+        const deviceGroup = new THREE.Group();
+        deviceGroup.position.copy(targetPos);
+
+        // 1. Polymer Casing
+        const casingMat = new THREE.MeshStandardMaterial({
+          color: !node.isAlive ? 0x1E293B : isSelected ? 0x00E5FF : 0x0A1424,
+          metalness: 0.85,
+          roughness: 0.25
+        });
+        const casingMesh = new THREE.Mesh(isCH ? chBaseGeo : baseCylinderGeo, casingMat);
+        casingMesh.castShadow = true;
+        deviceGroup.add(casingMesh);
+
+        // 2. Glowing LED Core
+        const ledMat = new THREE.MeshStandardMaterial({
+          color: isCH ? 0xF59E0B : 0x00E5FF,
+          emissive: isCH ? 0xF59E0B : 0x00E5FF,
+          emissiveIntensity: !node.isAlive ? 0.0 : isCH ? 2.0 : 1.2,
+          roughness: 0.15,
+          metalness: 0.5
+        });
+        const ledMesh = new THREE.Mesh(isCH ? chLedGeo : ledDomeGeo, ledMat);
+        ledMesh.position.y = isCH ? 0.75 : 0.45;
+        deviceGroup.add(ledMesh);
+
+        // 3. Antenna Mast & Beacon
+        const mastMat = new THREE.MeshStandardMaterial({ color: 0x1C3150, metalness: 0.9 });
+        const mastMesh = new THREE.Mesh(isCH ? chMastGeo : antennaMastGeo, mastMat);
+        mastMesh.position.y = isCH ? 1.85 : 1.15;
+        deviceGroup.add(mastMesh);
+
+        const beaconMat = new THREE.MeshBasicMaterial({ color: isCH ? 0xF59E0B : 0x00E5FF });
+        const beaconMesh = new THREE.Mesh(isCH ? chBeaconGeo : antennaBeaconGeo, beaconMat);
+        beaconMesh.position.y = isCH ? 3.0 : 1.85;
+        deviceGroup.add(beaconMesh);
+
+        // 4. Cluster Head Gold Crown Beacon
+        const crownMat = new THREE.MeshBasicMaterial({ color: 0xF59E0B, side: THREE.DoubleSide, transparent: true, opacity: 0.45 });
+        const chCrownMesh = new THREE.Mesh(chCrownGeo, crownMat);
+        chCrownMesh.rotation.x = -Math.PI / 2;
+        chCrownMesh.position.y = 0.25;
+        chCrownMesh.visible = isCH && node.isAlive;
+        deviceGroup.add(chCrownMesh);
+
+        deviceGroup.userData = { node: node, isCH: isCH };
+        nodesGroup.add(deviceGroup);
+
+        // 5. Translucent Sensing Disks (Subtle, non-obtrusive)
+        const diskColor = isCH ? 0xF59E0B : 0x00E5FF;
+        const diskMat = new THREE.MeshBasicMaterial({
+          color: diskColor,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.06,
+          depthWrite: false
+        });
+        const diskMesh = new THREE.Mesh(sensingDiskGeo, diskMat);
+        diskMesh.position.set(targetPos.x, 0.06, targetPos.z);
+        coverageGroup.add(diskMesh);
+
+        const ringMat = new THREE.MeshBasicMaterial({
+          color: diskColor,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.18
+        });
+        const diskRingMesh = new THREE.Mesh(sensingRingGeo, ringMat);
+        diskRingMesh.position.set(targetPos.x, 0.07, targetPos.z);
+        coverageGroup.add(diskRingMesh);
+
+        // 6. Node ID Sprite Label [N17]
+        const sprite = createTextSprite(`[N${node.node_id}]`, isCH ? '#F59E0B' : '#00E5FF');
+        sprite.position.set(targetPos.x, targetPos.y + (isCH ? 4.8 : 3.6), targetPos.z);
+        labelsGroup.add(sprite);
+
+        handle = {
+          id: node.node_id,
+          group: deviceGroup,
+          casingMesh,
+          ledMesh,
+          mastMesh,
+          beaconMesh,
+          chCrownMesh,
+          diskMesh,
+          diskRingMesh,
+          sprite,
+          baseY: targetPos.y,
+          currentPos: targetPos.clone(),
+          targetPos: targetPos.clone(),
+          node,
+          isCH,
+          txFlashTimer: 0,
+          rxFlashTimer: 0
+        };
+
+        nodeHandlesRef.current.set(node.node_id, handle);
+      } else {
+        // Node already exists — update target coordinates for smooth interpolation!
+        handle.node = node;
+        handle.isCH = isCH;
+        handle.baseY = targetPos.y;
+        handle.targetPos.copy(targetPos);
+        handle.group.userData = { node: node, isCH: isCH };
+        if (handle.chCrownMesh) {
+          handle.chCrownMesh.visible = isCH && node.isAlive;
+        }
+      }
+    });
+
+  }, [nodes.length, selectedSeed, activeScenario.id, sensingRad, W, to3DPos, createTextSprite]);
+
+  // -------------------------------------------------------------
+  // 3. IN-PLACE NODE VISUAL STATE & ANN HEATMAP SYNCHRONIZATION
+  // -------------------------------------------------------------
+  useEffect(() => {
+    // Map ANN predictions by Node ID for fast classification
+    const predMap = new Map();
+    if (annInferenceResult?.predictions) {
+      annInferenceResult.predictions.forEach(p => predMap.set(p.nodeId, p));
+    }
+
+    nodes.forEach((node) => {
+      const handle = nodeHandlesRef.current.get(node.node_id);
+      if (!handle) return;
+
+      const isCH = activeClusterHeads.includes(node.node_id);
+      const isSelected = selectedNode?.node_id === node.node_id;
+      const isSleep = selectedOptimizer === 'ann_greedy' && node.final_state === 'SLEEP';
+
+      handle.node = node;
+      handle.isCH = isCH;
+
+      // Color Palette based on State, VisMode, and ANN Heatmap Mode
+      let coreColor = 0x00E5FF;
+      let emissivePower = 1.2;
+      let isDim = false;
+
+      if (!node.isAlive) {
+        coreColor = 0x334155;
+        emissivePower = 0.0;
+        isDim = true;
+      } else if (annHeatmapMode && predMap.has(node.node_id)) {
+        const p = predMap.get(node.node_id);
+        if (p.overlapRisk >= 0.45) {
+          coreColor = 0xEF4444; // RED: High Overlap Risk
+          emissivePower = 1.8;
+        } else if (p.blindspotRisk >= 0.40) {
+          coreColor = 0xA855F7; // PURPLE: Blindspot Risk
+          emissivePower = 1.8;
+        } else if (p.coverageContribution >= 0.70) {
+          coreColor = 0x10B981; // GREEN: Optimal Coverage
+          emissivePower = 1.6;
+        } else {
+          coreColor = 0xF59E0B; // YELLOW: Moderate
+          emissivePower = 1.4;
+        }
+      } else if (isSleep) {
+        coreColor = 0x6366F1;
+        emissivePower = 0.25;
+        isDim = true;
+      } else if (isCH) {
+        coreColor = 0xF59E0B;
+        emissivePower = 2.0;
+      } else if (visMode === 'energy') {
+        const eRatio = node.currentEnergy / node.energy;
+        coreColor = eRatio > 0.6 ? 0x10B981 : eRatio > 0.25 ? 0xF59E0B : 0xEF4444;
+        emissivePower = 1.5;
+      } else if (node.currentEnergy / node.energy < 0.25) {
+        coreColor = 0xF97316;
+        emissivePower = 0.8;
+      } else if (selectedOptimizer === 'ann_greedy' || selectedOptimizer === 'pso') {
+        coreColor = 0x10B981;
+        emissivePower = 1.4;
+      }
+
+      // Update Casing Material
+      const casingMat = handle.casingMesh.material as THREE.MeshStandardMaterial;
+      casingMat.color.setHex(isDim ? 0x1E293B : isSelected ? 0x00E5FF : 0x0A1424);
+
+      // Update LED Material
+      const ledMat = handle.ledMesh.material as THREE.MeshStandardMaterial;
+      ledMat.color.setHex(isSelected ? 0x00E5FF : coreColor);
+      ledMat.emissive.setHex(isSelected ? 0x00E5FF : coreColor);
+      ledMat.emissiveIntensity = isSelected ? 2.8 : emissivePower;
+
+      // Update Antenna Beacon
+      const beaconMat = handle.beaconMesh.material as THREE.MeshBasicMaterial;
+      beaconMat.color.setHex(isSelected ? 0x00E5FF : coreColor);
+
+      // Tilted antenna for dead node
+      if (!node.isAlive) {
+        handle.mastMesh.rotation.z = 0.35;
+      } else {
+        handle.mastMesh.rotation.z = 0.0;
+      }
+
+      // Update CH Crown
+      if (handle.chCrownMesh) {
+        handle.chCrownMesh.visible = isCH && node.isAlive;
+      }
+
+      // Update Disk Material Color
+      if (handle.diskMesh && handle.diskRingMesh) {
+        const diskColor = isCH ? 0xF59E0B : isSelected ? 0x00E5FF : annHeatmapMode ? coreColor : 0x00E5FF;
+        (handle.diskMesh.material as THREE.MeshBasicMaterial).color.setHex(diskColor);
+        (handle.diskRingMesh.material as THREE.MeshBasicMaterial).color.setHex(diskColor);
+      }
+    });
+  }, [nodes, activeClusterHeads, selectedNode, selectedOptimizer, visMode, annHeatmapMode, annInferenceResult]);
+
+  // -------------------------------------------------------------
+  // 4. PROTOCOL-SPECIFIC LASER BEAMS & PACKET STREAMS SYNCHRONIZATION
+  // -------------------------------------------------------------
+  useEffect(() => {
+    const routingGroup = routingLayerGroupRef.current;
+    const packetsGroup = packetsLayerGroupRef.current;
+    if (!routingGroup || !packetsGroup || nodes.length === 0) return;
+
+    routingGroup.clear();
+    packetsGroup.clear();
+    laserBeamsRef.current = [];
+    packetStreamsRef.current = [];
 
     const chPositionsMap: Record<number, THREE.Vector3> = {};
     const aliveActiveNodes: DynamicNodeState[] = [];
@@ -575,131 +1271,111 @@ export const WSN3DVisualizer: React.FC = () => {
     nodes.forEach((node) => {
       const isCH = activeClusterHeads.includes(node.node_id);
       const isSleep = selectedOptimizer === 'ann_greedy' && node.final_state === 'SLEEP';
-      const pos = to3DPos(node.x, node.y, isCH ? 2.2 : 1.0);
-
-      // Palette Colors by State
-      let coreColor = 0x00E5FF; // Active: Electric Cyan
-      let emissivePower = 1.0;
-      let opacity = 1.0;
-
-      if (!node.isAlive) {
-        coreColor = 0xEF4444; // Dead: Red
-        emissivePower = 0.1;
-        opacity = 0.35;
-      } else if (isSleep) {
-        coreColor = 0x6366F1; // Sleep: Dim Violet / Slate
-        emissivePower = 0.25;
-        opacity = 0.45;
-      } else if (isCH) {
-        coreColor = 0xF59E0B; // Cluster Head: Gold / Amber
-        emissivePower = 1.8;
-      } else if (node.currentEnergy / node.energy < 0.25) {
-        coreColor = 0xF97316; // Low Energy: Orange
-        emissivePower = 0.7;
-      }
-
-      // Create Physical Sensor Device Group
-      const deviceGroup = new THREE.Group();
-      deviceGroup.position.copy(pos);
-
-      // 1. Metallic Base Casing
-      const casingMat = new THREE.MeshStandardMaterial({
-        color: 0x0D1626,
-        metalness: 0.85,
-        roughness: 0.25,
-        transparent: isSleep || !node.isAlive,
-        opacity: opacity
-      });
-      const casingMesh = new THREE.Mesh(isCH ? chBaseGeo : baseCylinderGeo, casingMat);
-      casingMesh.castShadow = true;
-      deviceGroup.add(casingMesh);
-
-      // 2. Central Glowing LED Core
-      const ledMat = new THREE.MeshStandardMaterial({
-        color: coreColor,
-        emissive: coreColor,
-        emissiveIntensity: emissivePower,
-        roughness: 0.15,
-        metalness: 0.5,
-        transparent: isSleep || !node.isAlive,
-        opacity: opacity
-      });
-      const ledMesh = new THREE.Mesh(isCH ? chLedGeo : ledDomeGeo, ledMat);
-      ledMesh.position.y = isCH ? 0.7 : 0.45;
-      deviceGroup.add(ledMesh);
-
-      // 3. Antenna Pin & Beacon Light
-      const mastMat = new THREE.MeshStandardMaterial({ color: 0x1C3150, metalness: 0.9 });
-      const mastMesh = new THREE.Mesh(isCH ? chMastGeo : antennaMastGeo, mastMat);
-      mastMesh.position.y = isCH ? 1.8 : 1.1;
-      deviceGroup.add(mastMesh);
-
-      const beaconMat = new THREE.MeshBasicMaterial({ color: coreColor });
-      const beaconMesh = new THREE.Mesh(isCH ? chBeaconGeo : antennaBeaconGeo, beaconMat);
-      beaconMesh.position.y = isCH ? 2.9 : 1.8;
-      deviceGroup.add(beaconMesh);
-
-      deviceGroup.userData = {
-        node: node,
-        isCH: isCH,
-        baseY: pos.y
-      };
-
-      scene.add(deviceGroup);
-      nodeGroupsRef.current.push(deviceGroup);
+      const targetPos = to3DPos(node.x, node.y, isCH ? 2.0 : 0.8);
 
       if (node.isAlive && !isSleep) {
         aliveActiveNodes.push(node);
-        if (isCH) chPositionsMap[node.node_id] = pos;
-      }
-
-      // Energy Ring Indicator
-      if (showEnergyState && node.isAlive) {
-        const eRatio = node.currentEnergy / node.energy;
-        const ringColor = eRatio > 0.6 ? 0x10B981 : eRatio > 0.25 ? 0xF59E0B : 0xEF4444;
-        const ringMat = new THREE.MeshBasicMaterial({
-          color: ringColor,
-          side: THREE.DoubleSide,
-          transparent: true,
-          opacity: 0.8
-        });
-        const ringMesh = new THREE.Mesh(energyRingGeo, ringMat);
-        ringMesh.rotation.x = -Math.PI / 2;
-        ringMesh.position.set(pos.x, pos.y + 0.1, pos.z);
-        scene.add(ringMesh);
-        energyRingsRef.current.push(ringMesh);
-      }
-
-      // Volumetric Translucent Sensing Domes
-      if (showCoverage && node.isAlive && !isSleep) {
-        const domeMat = new THREE.MeshBasicMaterial({
-          color: isCH ? 0x8B5CF6 : 0x00E5FF,
-          transparent: true,
-          opacity: isCH ? 0.14 : 0.075,
-          side: THREE.DoubleSide,
-          depthWrite: false
-        });
-        const domeMesh = new THREE.Mesh(diskBubbleGeo, domeMat);
-        domeMesh.position.set(pos.x, pos.y - 0.9, pos.z);
-        scene.add(domeMesh);
-        diskBubbleMeshesRef.current.push(domeMesh);
+        if (isCH) chPositionsMap[node.node_id] = targetPos;
       }
     });
 
-    // -------------------------------------------------------------
-    // PROTOCOL-SPECIFIC ROUTING TOPOLOGY & ANIMATED FLOW
-    // -------------------------------------------------------------
     const chIds = Object.keys(chPositionsMap).map(Number);
 
+    const createLaserPair = (points: THREE.Vector3[], color: number) => {
+      const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+      const coreMat = new THREE.LineBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0,
+        linewidth: 2
+      });
+      const haloMat = new THREE.LineBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0,
+        blending: THREE.AdditiveBlending
+      });
+      const coreLine = new THREE.Line(lineGeo, coreMat);
+      const haloLine = new THREE.Line(lineGeo, haloMat);
+      return { coreLine, haloLine };
+    };
+
+    const createPacketParticleStream = (
+      points: THREE.Vector3[],
+      color: number,
+      isUplink: boolean,
+      sourceId: number,
+      targetId: number | 'sink',
+      activePhase: [number, number],
+      label: string
+    ): DynamicPacketStream => {
+      const streamGroup = new THREE.Group();
+      streamGroup.visible = false;
+      packetsGroup.add(streamGroup);
+
+      const particles: PacketParticleItem[] = [];
+
+      const leadColor = isUplink ? 0xFF4500 : 0xFF2B6D;
+      const flankColor1 = isUplink ? 0xFFD700 : 0xFF1493;
+      const flankColor2 = isUplink ? 0xFF6B8B : 0xFF3366;
+      const midColor = isUplink ? 0xF59E0B : 0xFF0055;
+      const tailColor1 = isUplink ? 0xF97316 : 0xFF4081;
+      const tailColor2 = isUplink ? 0xFDE047 : 0xFF6B8B;
+
+      const particleConfigs = [
+        { radius: isUplink ? 0.65 : 0.48, color: leadColor, offsetT: 0.0, lx: 0, ly: 0, lz: 0 },
+        { radius: isUplink ? 0.46 : 0.36, color: flankColor1, offsetT: -0.04, lx: 0.22, ly: 0.18, lz: 0.08 },
+        { radius: isUplink ? 0.46 : 0.36, color: flankColor2, offsetT: -0.05, lx: -0.22, ly: -0.16, lz: -0.08 },
+        { radius: isUplink ? 0.40 : 0.30, color: midColor, offsetT: -0.09, lx: 0.10, ly: -0.12, lz: 0.14 },
+        { radius: isUplink ? 0.32 : 0.24, color: tailColor1, offsetT: -0.14, lx: -0.12, ly: 0.10, lz: -0.10 },
+        { radius: isUplink ? 0.25 : 0.18, color: tailColor2, offsetT: -0.19, lx: 0.06, ly: 0.06, lz: 0.04 },
+      ];
+
+      particleConfigs.forEach((cfg) => {
+        const geo = new THREE.SphereGeometry(cfg.radius, 12, 12);
+        const mat = new THREE.MeshBasicMaterial({
+          color: cfg.color,
+          transparent: true,
+          opacity: 0.95,
+          blending: THREE.AdditiveBlending
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        streamGroup.add(mesh);
+
+        particles.push({
+          mesh,
+          offsetT: cfg.offsetT,
+          lateralX: cfg.lx,
+          lateralY: cfg.ly,
+          lateralZ: cfg.lz,
+          baseScale: 1.0
+        });
+      });
+
+      const targetPos = targetId === 'sink' ? sink3DPos : (chPositionsMap[targetId as number] || points[points.length - 1]);
+
+      return {
+        group: streamGroup,
+        particles,
+        path: points,
+        color,
+        sourceId,
+        targetId,
+        targetPos,
+        isUplink,
+        activePhase,
+        label
+      };
+    };
+
     if (selectedProtocol === 'pegasis') {
-      // -----------------------------------------------------------
-      // PEGASIS PROTOCOL: Sequential Greedy Chain
-      // -----------------------------------------------------------
-      if (showCommLinks && linksGroupRef.current && aliveActiveNodes.length > 1) {
+      // 1. PEGASIS PROTOCOL: Sequential Greedy Chain & Chain Hop Flow
+      if (aliveActiveNodes.length > 1) {
         const chainNodes = [...aliveActiveNodes].sort((a, b) => a.x - b.x);
         const chainPoints: THREE.Vector3[] = chainNodes.map(n => to3DPos(n.x, n.y, 1.2));
-        
-        for (let i = 0; i < chainPoints.length - 1; i++) {
+        const numHops = chainPoints.length - 1;
+
+        for (let i = 0; i < numHops; i++) {
           const p1 = chainPoints[i];
           const p2 = chainPoints[i + 1];
           const curve = new THREE.QuadraticBezierCurve3(
@@ -707,14 +1383,38 @@ export const WSN3DVisualizer: React.FC = () => {
             new THREE.Vector3((p1.x + p2.x) / 2, Math.min(6, p1.distanceTo(p2) * 0.2 + 2), (p1.z + p2.z) / 2),
             p2
           );
-          const points = curve.getPoints(12);
-          const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
-          const lineMat = new THREE.LineBasicMaterial({ color: 0xFACC15, transparent: true, opacity: 0.6 });
-          const line = new THREE.Line(lineGeo, lineMat);
-          linksGroupRef.current?.add(line);
+          const points = curve.getPoints(16);
+          const { coreLine, haloLine } = createLaserPair(points, 0xFF2B6D);
+          routingGroup.add(coreLine);
+          routingGroup.add(haloLine);
+
+          const hopStart = 0.22 + (i / numHops) * 0.45;
+          const hopEnd = 0.22 + ((i + 1) / numHops) * 0.45;
+
+          laserBeamsRef.current.push({
+            coreLine,
+            haloLine,
+            points,
+            sourceId: chainNodes[i].node_id,
+            targetId: chainNodes[i + 1].node_id,
+            isUplink: false,
+            activePhase: [hopStart, hopEnd],
+            label: `Chain Hop: N${chainNodes[i].node_id} → N${chainNodes[i + 1].node_id}`
+          });
+
+          const stream = createPacketParticleStream(
+            points,
+            0xFF2B6D,
+            false,
+            chainNodes[i].node_id,
+            chainNodes[i + 1].node_id,
+            [hopStart, hopEnd],
+            `Chain Packet Hop ${i + 1}/${numHops}`
+          );
+          packetStreamsRef.current.push(stream);
         }
 
-        // Leader connects directly to Sink
+        // Leader connects to Sink
         const leaderNode = chainNodes[currentRound % chainNodes.length] || chainNodes[0];
         const leaderPos = to3DPos(leaderNode.x, leaderNode.y, 2.5);
         const leaderCurve = new THREE.QuadraticBezierCurve3(
@@ -723,207 +1423,352 @@ export const WSN3DVisualizer: React.FC = () => {
           sink3DPos
         );
         const leaderPoints = leaderCurve.getPoints(24);
-        const leaderLineGeo = new THREE.BufferGeometry().setFromPoints(leaderPoints);
-        const leaderLineMat = new THREE.LineBasicMaterial({ color: 0xF59E0B, transparent: true, opacity: 0.9 });
-        const leaderLine = new THREE.Line(leaderLineGeo, leaderLineMat);
-        routingGroupRef.current?.add(leaderLine);
+        const { coreLine, haloLine } = createLaserPair(leaderPoints, 0xF59E0B);
+        routingGroup.add(coreLine);
+        routingGroup.add(haloLine);
 
-        // Chain Hop Packets
-        if (showRoutingPaths && packetsGroupRef.current) {
-          const pktGeo = new THREE.SphereGeometry(0.8, 12, 12);
-          const pktMat = new THREE.MeshBasicMaterial({ color: 0xFACC15 });
-          const pktMesh = new THREE.Mesh(pktGeo, pktMat);
-          packetsGroupRef.current?.add(pktMesh);
-
-          packetObjectsRef.current.push({
-            mesh: pktMesh,
-            path: [...chainPoints, sink3DPos],
-            progress: 0,
-            speed: 0.008
-          });
-        }
-      }
-
-    } else if (selectedProtocol === 'leach') {
-      // -----------------------------------------------------------
-      // LEACH PROTOCOL: Direct Member -> CH and CH -> Sink
-      // -----------------------------------------------------------
-      if (showCommLinks && linksGroupRef.current && aliveActiveNodes.length > 0 && chIds.length > 0) {
-        aliveActiveNodes.forEach((node) => {
-          if (!chIds.includes(node.node_id)) {
-            const nodePos = to3DPos(node.x, node.y, 1.0);
-            let closestCHPos = chPositionsMap[chIds[0]];
-            let minDist = nodePos.distanceTo(closestCHPos);
-
-            chIds.forEach((chId) => {
-              const chPos = chPositionsMap[chId];
-              const d = nodePos.distanceTo(chPos);
-              if (d < minDist) {
-                minDist = d;
-                closestCHPos = chPos;
-              }
-            });
-
-            const curve = new THREE.QuadraticBezierCurve3(
-              nodePos,
-              new THREE.Vector3((nodePos.x + closestCHPos.x) / 2, Math.min(8, minDist * 0.15 + 2), (nodePos.z + closestCHPos.z) / 2),
-              closestCHPos
-            );
-            const points = curve.getPoints(16);
-            const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
-            const lineMat = new THREE.LineBasicMaterial({ color: 0x00E5FF, transparent: true, opacity: 0.4 });
-            const line = new THREE.Line(lineGeo, lineMat);
-            linksGroupRef.current?.add(line);
-          }
+        laserBeamsRef.current.push({
+          coreLine,
+          haloLine,
+          points: leaderPoints,
+          sourceId: leaderNode.node_id,
+          targetId: 'sink',
+          isUplink: true,
+          activePhase: [0.67, 0.88],
+          label: `Chain Leader N${leaderNode.node_id} → Base Station`
         });
 
-        // Direct CH to Sink lines
-        chIds.forEach((chId) => {
-          const chPos = chPositionsMap[chId];
-          const curve = new THREE.QuadraticBezierCurve3(
-            chPos,
-            new THREE.Vector3((chPos.x + sink3DPos.x) / 2, 22, (chPos.z + sink3DPos.z) / 2),
-            sink3DPos
-          );
-          const points = curve.getPoints(24);
-          const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
-          const lineMat = new THREE.LineBasicMaterial({ color: 0xF59E0B, transparent: true, opacity: 0.9 });
-          const line = new THREE.Line(lineGeo, lineMat);
-          routingGroupRef.current?.add(line);
-
-          if (showRoutingPaths && packetsGroupRef.current) {
-            const chPktGeo = new THREE.SphereGeometry(0.8, 12, 12);
-            const chPktMat = new THREE.MeshBasicMaterial({ color: 0xFACC15 });
-            const chPktMesh = new THREE.Mesh(chPktGeo, chPktMat);
-            packetsGroupRef.current?.add(chPktMesh);
-
-            packetObjectsRef.current.push({
-              mesh: chPktMesh,
-              path: points,
-              progress: Math.random(),
-              speed: 0.015
-            });
-          }
-        });
+        const leaderStream = createPacketParticleStream(
+          leaderPoints,
+          0xF59E0B,
+          true,
+          leaderNode.node_id,
+          'sink',
+          [0.67, 0.88],
+          'Aggregated Chain Super-Packet → Sink'
+        );
+        packetStreamsRef.current.push(leaderStream);
       }
-
     } else {
-      // -----------------------------------------------------------
-      // PROPOSED: ANN + PSO-HYBRID (Intra-Cluster Chain + Multi-Hop CH Relay)
-      // -----------------------------------------------------------
-      if (showCommLinks && linksGroupRef.current && aliveActiveNodes.length > 0) {
+      // 2. CLUSTER HEAD ROUTING (LEACH / HYBRID / PSO-HYBRID / ANN-PSO)
+      if (chIds.length > 0) {
         aliveActiveNodes.forEach((node) => {
-          if (!chIds.includes(node.node_id) && chIds.length > 0) {
-            const nodePos = to3DPos(node.x, node.y, 1.0);
-            let closestCHPos = chPositionsMap[chIds[0]];
-            let minDist = nodePos.distanceTo(closestCHPos);
-
-            chIds.forEach((chId) => {
-              const chPos = chPositionsMap[chId];
-              const d = nodePos.distanceTo(chPos);
-              if (d < minDist) {
-                minDist = d;
-                closestCHPos = chPos;
+          if (!activeClusterHeads.includes(node.node_id)) {
+            let nearestCHId = chIds[0];
+            let minDist = Infinity;
+            chIds.forEach((cid) => {
+              const chPos = chPositionsMap[cid];
+              if (chPos) {
+                const nodePos = to3DPos(node.x, node.y, 0.8);
+                const d = nodePos.distanceTo(chPos);
+                if (d < minDist) {
+                  minDist = d;
+                  nearestCHId = cid;
+                }
               }
             });
 
-            const curve = new THREE.QuadraticBezierCurve3(
-              nodePos,
-              new THREE.Vector3((nodePos.x + closestCHPos.x) / 2, Math.min(8, minDist * 0.15 + 2), (nodePos.z + closestCHPos.z) / 2),
-              closestCHPos
-            );
-            const points = curve.getPoints(16);
-            const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
-            const lineMat = new THREE.LineBasicMaterial({
-              color: 0x00E5FF,
-              transparent: true,
-              opacity: 0.35
-            });
-            const line = new THREE.Line(lineGeo, lineMat);
-            linksGroupRef.current?.add(line);
+            const sourcePos = to3DPos(node.x, node.y, 0.8);
+            const chPos = chPositionsMap[nearestCHId];
+            if (chPos) {
+              const curve = new THREE.QuadraticBezierCurve3(
+                sourcePos,
+                new THREE.Vector3((sourcePos.x + chPos.x) / 2, Math.min(8, minDist * 0.25 + 2), (sourcePos.z + chPos.z) / 2),
+                chPos
+              );
+              const points = curve.getPoints(18);
+              const { coreLine, haloLine } = createLaserPair(points, 0xFF2B6D);
+              routingGroup.add(coreLine);
+              routingGroup.add(haloLine);
 
-            if (showRoutingPaths && Math.random() < 0.5) {
-              const pktGeo = new THREE.SphereGeometry(0.45, 8, 8);
-              const pktMat = new THREE.MeshBasicMaterial({ color: 0x00E5FF });
-              const pktMesh = new THREE.Mesh(pktGeo, pktMat);
-              packetsGroupRef.current?.add(pktMesh);
-
-              packetObjectsRef.current.push({
-                mesh: pktMesh,
-                path: points,
-                progress: Math.random(),
-                speed: 0.01 + Math.random() * 0.005
+              laserBeamsRef.current.push({
+                coreLine,
+                haloLine,
+                points,
+                sourceId: node.node_id,
+                targetId: nearestCHId,
+                isUplink: false,
+                activePhase: [0.22, 0.45],
+                label: `Member N${node.node_id} → CH #${nearestCHId}`
               });
+
+              const stream = createPacketParticleStream(
+                points,
+                0xFF2B6D,
+                false,
+                node.node_id,
+                nearestCHId,
+                [0.22, 0.45],
+                `Telemetry Packet: N${node.node_id} → CH #${nearestCHId}`
+              );
+              packetStreamsRef.current.push(stream);
             }
           }
         });
-      }
 
-      // Multi-Hop Routing Paths (Cluster Heads to Base Station)
-      if (showRoutingPaths && routingGroupRef.current && chIds.length > 0) {
         chIds.forEach((chId) => {
           const chPos = chPositionsMap[chId];
+          if (!chPos) return;
+
           const curve = new THREE.QuadraticBezierCurve3(
             chPos,
-            new THREE.Vector3((chPos.x + sink3DPos.x) / 2, 22, (chPos.z + sink3DPos.z) / 2),
+            new THREE.Vector3((chPos.x + sink3DPos.x) / 2, 24, (chPos.z + sink3DPos.z) / 2),
             sink3DPos
           );
           const points = curve.getPoints(24);
-          const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
-          const lineMat = new THREE.LineBasicMaterial({
-            color: 0xF59E0B,
-            transparent: true,
-            opacity: 0.85
-          });
-          const line = new THREE.Line(lineGeo, lineMat);
-          routingGroupRef.current?.add(line);
+          const { coreLine, haloLine } = createLaserPair(points, 0xF59E0B);
+          routingGroup.add(coreLine);
+          routingGroup.add(haloLine);
 
-          const chPktGeo = new THREE.SphereGeometry(0.8, 12, 12);
-          const chPktMat = new THREE.MeshBasicMaterial({ color: 0xFACC15 });
-          const chPktMesh = new THREE.Mesh(chPktGeo, chPktMat);
-          packetsGroupRef.current?.add(chPktMesh);
-
-          packetObjectsRef.current.push({
-            mesh: chPktMesh,
-            path: points,
-            progress: Math.random(),
-            speed: 0.014 + Math.random() * 0.006
+          laserBeamsRef.current.push({
+            coreLine,
+            haloLine,
+            points,
+            sourceId: chId,
+            targetId: 'sink',
+            isUplink: true,
+            activePhase: [0.67, 0.88],
+            label: `Swarm Gateway Relay: CH #${chId} → Base Station`
           });
-        });
-      }
 
-      // Voronoi Cluster Boundaries
-      if (showClusters && clustersGroupRef.current && chIds.length > 0) {
-        chIds.forEach((chId) => {
-          const chPos = chPositionsMap[chId];
-          const clusterRingGeo = new THREE.RingGeometry(8, 12, 6);
-          const clusterRingMat = new THREE.MeshBasicMaterial({
-            color: 0x8B5CF6,
-            side: THREE.DoubleSide,
-            transparent: true,
-            opacity: 0.15
-          });
-          const clusterRing = new THREE.Mesh(clusterRingGeo, clusterRingMat);
-          clusterRing.rotation.x = -Math.PI / 2;
-          clusterRing.position.set(chPos.x, 0.15, chPos.z);
-          clustersGroupRef.current?.add(clusterRing);
+          const chStream = createPacketParticleStream(
+            points,
+            0xF59E0B,
+            true,
+            chId,
+            'sink',
+            [0.67, 0.88],
+            `Multi-Hop Aggregated Super-Packet (CH${chId} → Base Station)`
+          );
+          packetStreamsRef.current.push(chStream);
         });
       }
     }
+  }, [selectedProtocol, activeClusterHeads, nodes, selectedSeed, to3DPos, sink3DPos, currentRound]);
 
-    // Toggle Terrain & Grid visibility
-    if (terrainMeshRef.current) terrainMeshRef.current.visible = showTerrain;
-    if (gridHelperRef.current) gridHelperRef.current.visible = showTerrain;
+  // -------------------------------------------------------------
+  // 5. VORONOI CELL BOUNDARIES SYNCHRONIZATION
+  // -------------------------------------------------------------
+  useEffect(() => {
+    const voronoiGroup = voronoiLayerGroupRef.current;
+    if (!voronoiGroup) return;
 
-  }, [
-    nodes, activeClusterHeads, showCoverage, showCommLinks, showRoutingPaths, 
-    showClusters, showTerrain, showEnergyState, selectedOptimizer, selectedProtocol, 
-    sensingRad, to3DPos, sink3DPos, W, currentRound
-  ]);
+    voronoiGroup.clear();
 
-  // -----------------------------------------------------------------
-  // 3. 3D MOUSE MOVE & RAYCASTING INTERACTION
-  // -----------------------------------------------------------------
+    if (voronoiPolygons && voronoiPolygons.length > 0) {
+      const fenceMat = new THREE.MeshBasicMaterial({
+        color: 0x8B5CF6,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.04,
+        depthWrite: false
+      });
+
+      const fenceTopLineMat = new THREE.LineBasicMaterial({
+        color: 0x8B5CF6,
+        transparent: true,
+        opacity: 0.35
+      });
+
+      voronoiPolygons.forEach((vp) => {
+        if (vp.polygon.length >= 3) {
+          const isCellSelected = selectedNode?.node_id === vp.nodeId;
+          const polyPoints = vp.polygon;
+          for (let i = 0; i < polyPoints.length; i++) {
+            const pt1 = polyPoints[i];
+            const pt2 = polyPoints[(i + 1) % polyPoints.length];
+
+            const p1 = to3DPos(pt1[0], pt1[1], 0);
+            const p2 = to3DPos(pt2[0], pt2[1], 0);
+            const p1Top = to3DPos(pt1[0], pt1[1], isCellSelected ? 4.5 : 2.0);
+            const p2Top = to3DPos(pt2[0], pt2[1], isCellSelected ? 4.5 : 2.0);
+
+            const wallGeo = new THREE.BufferGeometry();
+            const vertices = new Float32Array([
+              p1.x, p1.y, p1.z,
+              p2.x, p2.y, p2.z,
+              p2Top.x, p2Top.y, p2Top.z,
+
+              p1.x, p1.y, p1.z,
+              p2Top.x, p2Top.y, p2Top.z,
+              p1Top.x, p1Top.y, p1Top.z
+            ]);
+            wallGeo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+            wallGeo.computeVertexNormals();
+            const wallMesh = new THREE.Mesh(wallGeo, fenceMat);
+            voronoiGroup.add(wallMesh);
+
+            const topGeo = new THREE.BufferGeometry().setFromPoints([p1Top, p2Top]);
+            const topLine = new THREE.Line(topGeo, fenceTopLineMat);
+            voronoiGroup.add(topLine);
+          }
+        }
+      });
+    }
+  }, [voronoiPolygons, to3DPos, selectedNode]);
+
+  // -------------------------------------------------------------
+  // 6. ANN MOVEMENT RECOMMENDATION ARROWS SYNCHRONIZATION
+  // -------------------------------------------------------------
+  useEffect(() => {
+    const annVectorsGroup = annVectorsLayerGroupRef.current;
+    if (!annVectorsGroup) return;
+
+    annVectorsGroup.clear();
+
+    if ((showANNMoveVectors || isOptimizing) && annInferenceResult?.predictions) {
+      annInferenceResult.predictions.forEach((pred) => {
+        const handle = nodeHandlesRef.current.get(pred.nodeId);
+        if (!handle || !handle.node.isAlive) return;
+
+        const origin3D = new THREE.Vector3(handle.currentPos.x, 1.8, handle.currentPos.z);
+        const dir3D = new THREE.Vector3(
+          (pred.recommendedMoveX / W) * 100,
+          0,
+          -((pred.recommendedMoveY / H) * 100)
+        );
+        const mag = dir3D.length();
+
+        if (mag > 0.4) {
+          dir3D.normalize();
+          const arrowLen = Math.min(7.5, mag * 2.2);
+          const arrowColor = pred.optimizationPriority === 'HIGH' ? 0xF43F5E : pred.optimizationPriority === 'MEDIUM' ? 0xF59E0B : 0x00E5FF;
+          const arrow = new THREE.ArrowHelper(dir3D, origin3D, arrowLen, arrowColor, 1.2, 0.6);
+          annVectorsGroup.add(arrow);
+        }
+      });
+    }
+  }, [showANNMoveVectors, isOptimizing, annInferenceResult, W, H]);
+
+  // -------------------------------------------------------------
+  // 7. GROUND OVERLAP CONCENTRATION HEATMAP SYNCHRONIZATION
+  // -------------------------------------------------------------
+  useEffect(() => {
+    const overlapGroup = overlapConcentrationLayerGroupRef.current;
+    if (!overlapGroup) return;
+
+    overlapGroup.clear();
+
+    if (showOverlapConcentration || visMode === 'coverage') {
+      const aliveNodes = nodes.filter(n => n.isAlive);
+      const gridSize = 16;
+      const stepX = W / gridSize;
+      const stepY = H / gridSize;
+      const rSensing = sensingRad;
+
+      const patchGeo = new THREE.PlaneGeometry(stepX * (100 / W) * 0.95, stepY * (100 / H) * 0.95);
+      patchGeo.rotateX(-Math.PI / 2);
+
+      for (let ix = 0; ix < gridSize; ix++) {
+        for (let iy = 0; iy < gridSize; iy++) {
+          const gx = (ix + 0.5) * stepX;
+          const gy = (iy + 0.5) * stepY;
+
+          let coverCount = 0;
+          for (let n = 0; n < aliveNodes.length; n++) {
+            const dist = Math.sqrt((aliveNodes[n].x - gx) ** 2 + (aliveNodes[n].y - gy) ** 2);
+            if (dist <= rSensing) {
+              coverCount++;
+            }
+          }
+
+          if (coverCount >= 2) {
+            // Overlap detected at this spatial patch
+            const colorHex = coverCount >= 3 ? 0xEF4444 : 0xF59E0B;
+            const patchMat = new THREE.MeshBasicMaterial({
+              color: colorHex,
+              transparent: true,
+              opacity: Math.min(0.45, 0.12 * coverCount),
+              side: THREE.DoubleSide,
+              depthWrite: false
+            });
+            const patchMesh = new THREE.Mesh(patchGeo, patchMat);
+            const p3D = to3DPos(gx, gy, 0.04);
+            patchMesh.position.set(p3D.x, 0.04, p3D.z);
+            overlapGroup.add(patchMesh);
+          }
+        }
+      }
+    }
+  }, [showOverlapConcentration, visMode, nodes, sensingRad, W, H, to3DPos]);
+
+  // -------------------------------------------------------------
+  // 8. GROUND BLINDSPOT HOLES MAP SYNCHRONIZATION
+  // -------------------------------------------------------------
+  useEffect(() => {
+    const blindspotGroup = blindspotHolesLayerGroupRef.current;
+    if (!blindspotGroup) return;
+
+    blindspotGroup.clear();
+
+    if (showBlindspotHoles) {
+      const aliveNodes = nodes.filter(n => n.isAlive);
+      const gridSize = 18;
+      const stepX = W / gridSize;
+      const stepY = H / gridSize;
+      const rSensing = sensingRad;
+
+      const holeRingGeo = new THREE.RingGeometry(1.6, 2.4, 24);
+      holeRingGeo.rotateX(-Math.PI / 2);
+      const holeMat = new THREE.MeshBasicMaterial({
+        color: 0xA855F7,
+        transparent: true,
+        opacity: 0.35,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      });
+
+      for (let ix = 0; ix < gridSize; ix++) {
+        for (let iy = 0; iy < gridSize; iy++) {
+          const gx = (ix + 0.5) * stepX;
+          const gy = (iy + 0.5) * stepY;
+
+          let isCovered = false;
+          for (let n = 0; n < aliveNodes.length; n++) {
+            const dist = Math.sqrt((aliveNodes[n].x - gx) ** 2 + (aliveNodes[n].y - gy) ** 2);
+            if (dist <= rSensing) {
+              isCovered = true;
+              break;
+            }
+          }
+
+          if (!isCovered) {
+            const ringMesh = new THREE.Mesh(holeRingGeo, holeMat);
+            const p3D = to3DPos(gx, gy, 0.05);
+            ringMesh.position.set(p3D.x, 0.05, p3D.z);
+            blindspotGroup.add(ringMesh);
+          }
+        }
+      }
+    }
+  }, [showBlindspotHoles, nodes, sensingRad, W, H, to3DPos]);
+
+  // -------------------------------------------------------------
+  // 9. EA-VVF-MOPSO FORCE VECTORS SYNCHRONIZATION
+  // -------------------------------------------------------------
+  useEffect(() => {
+    const forcesGroup = forcesLayerGroupRef.current;
+    if (!forcesGroup) return;
+
+    forcesGroup.clear();
+
+    if (isOptimizing && activeForceVectors && activeForceVectors.length > 0) {
+      activeForceVectors.forEach((fv) => {
+        const origin3D = to3DPos(fv.origin[0], fv.origin[1], 1.2);
+        const dir3D = new THREE.Vector3((fv.fx / W) * 100, 0, -((fv.fy / H) * 100));
+        const len = Math.min(8, dir3D.length() * 2.5);
+        if (len > 0.3) {
+          dir3D.normalize();
+          const arrowHelper = new THREE.ArrowHelper(dir3D, origin3D, len, 0x10B981, 1.2, 0.6);
+          forcesGroup.add(arrowHelper);
+        }
+      });
+    }
+  }, [isOptimizing, activeForceVectors, to3DPos, W, H]);
+
+  // -------------------------------------------------------------
+  // 10. 3D RAYCASTING & HOVER / CLICK INTERACTION
+  // -------------------------------------------------------------
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!containerRef.current || !cameraRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
@@ -932,14 +1777,13 @@ export const WSN3DVisualizer: React.FC = () => {
 
     mouseNormRef.current = { x: nx, y: ny };
 
-    // Raycast on sensor device groups
-    if (nodeGroupsRef.current.length > 0) {
+    if (nodeHandlesRef.current.size > 0) {
       const raycaster = new THREE.Raycaster();
       raycaster.setFromCamera(new THREE.Vector2(nx, ny), cameraRef.current);
       
       const meshObjects: THREE.Object3D[] = [];
-      nodeGroupsRef.current.forEach((g) => {
-        g.children.forEach((c) => meshObjects.push(c));
+      nodeHandlesRef.current.forEach((h) => {
+        h.group.children.forEach((c) => meshObjects.push(c));
       });
 
       const intersects = raycaster.intersectObjects(meshObjects);
@@ -956,7 +1800,7 @@ export const WSN3DVisualizer: React.FC = () => {
           containerRef.current.style.cursor = 'pointer';
 
           if (hoverHighlightMeshRef.current) {
-            hoverHighlightMeshRef.current.position.set(parentGroup.position.x, 0.1, parentGroup.position.z);
+            hoverHighlightMeshRef.current.position.set(parentGroup.position.x, 0.14, parentGroup.position.z);
             hoverHighlightMeshRef.current.visible = true;
           }
           return;
@@ -986,13 +1830,22 @@ export const WSN3DVisualizer: React.FC = () => {
   const handleClick = () => {
     if (hoveredNode) {
       soundFX.playClickSound();
-      setSelectedNode(hoveredNode);
+      
+      if (toolMode === 'inspect') {
+        setSelectedNode(hoveredNode);
+      } else if (toolMode === 'relocate') {
+        const newX = Math.max(5, Math.min(W - 5, hoveredNode.x + (Math.random() - 0.5) * 12));
+        const newY = Math.max(5, Math.min(H - 5, hoveredNode.y + (Math.random() - 0.5) * 12));
+        relocateNode(hoveredNode.node_id, newX, newY);
+      } else if (toolMode === 'inject') {
+        injectEnergyToNode(hoveredNode.node_id, 0.2);
+      } else if (toolMode === 'remove') {
+        toggleNodeState(hoveredNode.node_id);
+      }
     }
   };
 
-  // -----------------------------------------------------------------
-  // 4. 7 CAMERA CONTROLLER PRESETS
-  // -----------------------------------------------------------------
+  // Camera Presets
   const setCameraPreset = (preset: CameraMode) => {
     soundFX.playClickSound();
     setActiveCamPreset(preset);
@@ -1000,38 +1853,101 @@ export const WSN3DVisualizer: React.FC = () => {
     if (!cameraRef.current || !controlsRef.current) return;
 
     if (preset === 'perspective' || preset === 'reset') {
-      targetCameraPosRef.current.set(-45, 65, 95);
+      targetCameraPosRef.current.set(-46, 68, 96);
       controlsRef.current.target.set(0, 0, 0);
     } else if (preset === 'top') {
       targetCameraPosRef.current.set(0, 155, 0.01);
       controlsRef.current.target.set(0, 0, 0);
-    } else if (preset === 'isometric') {
-      targetCameraPosRef.current.set(75, 75, 75);
-      controlsRef.current.target.set(0, 0, 0);
     } else if (preset === 'sink') {
-      targetCameraPosRef.current.set(sink3DPos.x, sink3DPos.y + 22, sink3DPos.z + 38);
-      controlsRef.current.target.set(0, 0, 0);
+      targetCameraPosRef.current.set(0, 24, -135);
+      controlsRef.current.target.set(0, 2, 0);
     } else if (preset === 'orbit') {
       controlsRef.current.autoRotate = true;
-      controlsRef.current.autoRotateSpeed = 2.0;
-    } else if (preset === 'follow_packet') {
-      if (packetObjectsRef.current.length > 0) {
-        const lead = packetObjectsRef.current[0].mesh.position;
-        targetCameraPosRef.current.set(lead.x - 18, lead.y + 16, lead.z + 24);
-        controlsRef.current.target.copy(lead);
-      }
-    } else if (preset === 'follow_node') {
-      if (selectedNode) {
-        const n3D = to3DPos(selectedNode.x, selectedNode.y, 2);
-        targetCameraPosRef.current.set(n3D.x - 14, n3D.y + 12, n3D.z + 18);
-        controlsRef.current.target.copy(n3D);
-      }
+      controlsRef.current.autoRotateSpeed = 0.8;
     }
   };
 
-  // -----------------------------------------------------------------
-  // 5. SIMULATION ACTIONS
-  // -----------------------------------------------------------------
+  // Regional EMP Blast
+  const handleTriggerEMPBlast = () => {
+    soundFX.playOptimizationSweep();
+
+    if (effectsLayerGroupRef.current) {
+      const shockGeo = new THREE.RingGeometry(0.8, 1.8, 48);
+      shockGeo.rotateX(-Math.PI / 2);
+      const shockMat = new THREE.MeshBasicMaterial({
+        color: 0xF43F5E,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.95,
+        depthWrite: false
+      });
+      const shockMesh = new THREE.Mesh(shockGeo, shockMat);
+      shockMesh.position.set(0, 0.25, 0);
+      effectsLayerGroupRef.current.add(shockMesh);
+
+      empShockwavesRef.current.push({
+        mesh: shockMesh,
+        currentRadius: 1,
+        maxRadius: 28,
+        opacity: 0.95,
+        speed: 1.2
+      });
+    }
+
+    const centerX = W / 2;
+    const centerY = H / 2;
+    let affectedCount = 0;
+
+    nodes.forEach((n) => {
+      const dist = Math.sqrt((n.x - centerX) ** 2 + (n.y - centerY) ** 2);
+      if (dist <= 25 && n.isAlive) {
+        affectedCount++;
+        injectEnergyToNode(n.node_id, -0.25);
+      }
+    });
+
+    const bannerMsg = `💥 Regional EMP Blast: Neutralized ${affectedCount} Sensors in R=25m Perimeter!`;
+    setEmpBannerText(bannerMsg);
+
+    if (empBannerTimerRef.current) clearTimeout(empBannerTimerRef.current);
+    empBannerTimerRef.current = setTimeout(() => {
+      setEmpBannerText(null);
+    }, 4500);
+  };
+
+  const handleStepForwardEvent = () => {
+    soundFX.playClickSound();
+    const currentIdx = EVENT_STAGES.findIndex(s => roundPhaseTimerRef.current >= s.startP && roundPhaseTimerRef.current < s.endP);
+    const safeIdx = currentIdx >= 0 ? currentIdx : 0;
+
+    if (safeIdx < EVENT_STAGES.length - 1) {
+      const nextStage = EVENT_STAGES[safeIdx + 1];
+      roundPhaseTimerRef.current = nextStage.startP + 0.005;
+      setActiveEventIndex(safeIdx + 1);
+    } else {
+      roundPhaseTimerRef.current = 0.0;
+      setActiveEventIndex(0);
+      stepForward(1);
+    }
+  };
+
+  const handleStepBackwardEvent = () => {
+    soundFX.playClickSound();
+    const currentIdx = EVENT_STAGES.findIndex(s => roundPhaseTimerRef.current >= s.startP && roundPhaseTimerRef.current < s.endP);
+    const safeIdx = currentIdx >= 0 ? currentIdx : 0;
+
+    if (safeIdx > 0) {
+      const prevStage = EVENT_STAGES[safeIdx - 1];
+      roundPhaseTimerRef.current = prevStage.startP + 0.005;
+      setActiveEventIndex(safeIdx - 1);
+    } else {
+      const lastStage = EVENT_STAGES[EVENT_STAGES.length - 1];
+      roundPhaseTimerRef.current = lastStage.startP + 0.005;
+      setActiveEventIndex(EVENT_STAGES.length - 1);
+      stepBackward(1);
+    }
+  };
+
   const handleApplySliders = (newN = nodeCount, newRs = sensingRad, newRc = commRad, newE0 = initialEnergy, newRounds = maxRounds) => {
     saveCustomScenario({
       ...activeScenario,
@@ -1048,6 +1964,11 @@ export const WSN3DVisualizer: React.FC = () => {
     executeOptimization();
   };
 
+  const handleRunANN = () => {
+    soundFX.playANNScanSound();
+    runANNInference();
+  };
+
   const handleToggleStream = () => {
     soundFX.playClickSound();
     if (isPlaying) {
@@ -1057,8 +1978,9 @@ export const WSN3DVisualizer: React.FC = () => {
     }
   };
 
-  const handleResetDistribution = () => {
+  const handleResetExperiment = () => {
     soundFX.playResetSound();
+    roundPhaseTimerRef.current = 0;
     restart();
   };
 
@@ -1071,345 +1993,611 @@ export const WSN3DVisualizer: React.FC = () => {
     }
   };
 
-  // 8-Step Simulation Story Workflow State
-  const workflowSteps = [
-    { num: '01', name: 'Node Deployment', desc: 'Spatial field distribution (N=100)', icon: Layers, progress: 100 },
-    { num: '02', name: 'ANN Classification', desc: 'Predicting redundant overlap states', icon: Brain, progress: selectedOptimizer === 'ann_greedy' ? 100 : 0 },
-    { num: '03', name: 'Coverage Optimization', desc: 'Greedy pruning bounded Δ ≤ 1.0%', icon: ShieldCheck, progress: selectedOptimizer === 'ann_greedy' ? 100 : 0 },
-    { num: '04', name: 'Cluster Formation', desc: 'Multi-objective PSO CH election', icon: Hexagon, progress: activeClusterHeads.length > 0 ? 100 : 0 },
-    { num: '05', name: 'Routing Setup', desc: 'Hybrid intra-cluster chains & relays', icon: GitBranch, progress: activeClusterHeads.length > 0 ? 100 : 0 },
-    { num: '06', name: 'Data Transmission', desc: 'Streaming packets to Base Station', icon: Radio, progress: isPlaying ? 100 : currentRound > 0 ? 75 : 0 },
-    { num: '07', name: 'Energy Consumption', desc: 'First-Order Radio Model physics', icon: Zap, progress: currentRound > 0 ? Math.min(100, Math.round((currentRound / maxRounds) * 100)) : 0 },
-    { num: '08', name: 'Network Lifetime', desc: 'FND / HND / LND mission horizon', icon: Activity, progress: currentRound > 0 ? Math.min(100, Math.round((currentRound / (telemetry.lastNodeDeadRound || maxRounds)) * 100)) : 0 }
-  ];
+  const activeStageInfo = EVENT_STAGES[activeEventIndex] || EVENT_STAGES[0];
 
-  const currentStoryInfo = storyStep ? storyStepsInfo[storyStep - 1] : null;
+  const protocolNameMap: Record<RoutingProtocol, string> = {
+    leach: 'LEACH',
+    pegasis: 'PEGASIS',
+    hybrid: 'HYBRID',
+    pso_hybrid: 'PSO-HYBRID',
+    ann_pso_hybrid: 'ANN-PSO'
+  };
 
   return (
     <div 
       ref={wrapperRef}
-      className={`w-full font-mono text-xs space-y-6 ${
-        isFullscreen ? 'fixed inset-0 z-50 p-6 bg-[#050912] overflow-y-auto' : ''
+      className={`w-full font-mono text-xs relative ${
+        isFullscreen ? 'fixed inset-0 z-50 bg-[#050811] overflow-hidden p-3' : 'space-y-4'
       }`}
     >
-      {/* 12-Step Story Mode (Explain Simulation) Presentation Banner */}
-      {storyStep !== null && currentStoryInfo && (
-        <div className="p-4 rounded-3xl bg-gradient-to-r from-[#0B1220] via-[#0D1626] to-[#0B1220] border-2 border-cyan-500/50 shadow-2xl shadow-cyan-950/40 animate-fadeIn space-y-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center space-x-2">
-              <span className="px-2.5 py-1 rounded-full bg-cyan-500 text-slate-950 font-black text-xs uppercase tracking-wider">
-                {currentStoryInfo.subtitle}
+      {/* 2-Column Hero Layout Matching Reference Video */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+        
+        {/* ======================================================= */}
+        {/* LEFT / CENTER: SCIENTIFIC 3D DIGITAL TWIN VIEWPORT      */}
+        {/* ======================================================= */}
+        <div className={`${isPresentationMode ? 'lg:col-span-12' : 'lg:col-span-8 xl:col-span-9'} relative flex flex-col justify-between rounded-3xl border border-[#1C3150] bg-[#050811] overflow-hidden shadow-2xl transition-all duration-300 ${
+          isFullscreen ? 'h-full' : isPresentationMode ? 'min-h-[640px] h-[calc(100vh-140px)]' : 'min-h-[580px] h-[calc(100vh-220px)] max-h-[720px]'
+        }`}>
+          
+          {/* Top Floating Badge Bar */}
+          <div className="absolute top-3.5 left-3.5 right-3.5 z-30 flex items-center justify-between pointer-events-none">
+            
+            {/* Top-Left: Spatial Field & Sink Coordinates Capsule */}
+            <div className="flex items-center space-x-2 pointer-events-auto bg-[#070E1A]/85 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-[#1C3150] shadow-xl">
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+              <span className="text-[11px] text-cyan-300 font-mono tracking-wide">
+                100m &times; 100m SPATIAL FIELD &bull; SINK ({activeScenario.sinkX}, {activeScenario.sinkY})
               </span>
-              <h2 className="text-sm sm:text-base font-bold text-white tracking-wide">
-                {currentStoryInfo.title}
-              </h2>
             </div>
 
-            {/* Story Controller Buttons */}
-            <div className="flex items-center space-x-2">
+            {/* Top-Right: Sound, 60 FPS, & Fullscreen */}
+            <div className="flex items-center space-x-2 pointer-events-auto">
               <button
-                onClick={prevStoryStep}
-                className="px-2.5 py-1 rounded-xl bg-[#070B14] border border-[#1C3150] text-slate-300 hover:text-white transition-all cursor-pointer"
+                onClick={() => {
+                  toggleAudio();
+                }}
+                className={`p-1.5 px-2.5 rounded-full backdrop-blur-md border font-bold flex items-center space-x-1 transition-all cursor-pointer shadow-xl text-[10px] ${
+                  isAudioEnabled 
+                    ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300' 
+                    : 'bg-[#070E1A]/85 border-[#1C3150] text-slate-400'
+                }`}
+                title={isAudioEnabled ? 'Mute Scientific Audio' : 'Unmute Audio'}
               >
-                ◀ Prev
+                {isAudioEnabled ? <Volume2 className="w-3.5 h-3.5 text-cyan-400" /> : <VolumeX className="w-3.5 h-3.5 text-slate-400" />}
+                <span>{isAudioEnabled ? 'AUDIO ON' : 'MUTED'}</span>
               </button>
+
               <button
-                onClick={() => setIsStoryPlaying(!isStoryPlaying)}
-                className={`px-3 py-1 rounded-xl font-bold transition-all cursor-pointer ${
-                  isStoryPlaying ? 'bg-amber-500 text-slate-950' : 'bg-cyan-500 text-slate-950'
+                onClick={() => {
+                  soundFX.playClickSound();
+                  setIsPresentationMode(!isPresentationMode);
+                }}
+                className={`p-1.5 px-2.5 rounded-full backdrop-blur-md border font-bold flex items-center space-x-1 transition-all cursor-pointer shadow-xl text-[10px] ${
+                  isPresentationMode
+                    ? 'bg-purple-500/20 border-purple-400 text-purple-300'
+                    : 'bg-[#070E1A]/85 border-[#1C3150] text-slate-400 hover:text-white'
+                }`}
+                title="Toggle Presentation Mode"
+              >
+                <span>{isPresentationMode ? 'EXIT PRESENTATION' : 'PRESENTATION MODE'}</span>
+              </button>
+
+              <div className="bg-[#070E1A]/85 backdrop-blur-md px-3 py-1.5 rounded-full border border-[#1C3150] shadow-xl text-[10px] text-slate-400 font-mono tracking-wider hidden sm:block">
+                60 FPS &bull; HARDWARE ACCELERATED
+              </div>
+
+              <button
+                onClick={toggleFullscreen}
+                className="p-1.5 rounded-full bg-[#070E1A]/85 backdrop-blur-md border border-[#1C3150] text-slate-400 hover:text-white transition-all cursor-pointer shadow-xl"
+                title="Toggle Fullscreen"
+              >
+                {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+
+          </div>
+
+          {/* Top Center: Prominent Live Event HUD Banner (Synchronized Event Timeline) */}
+          {!(isResearchDemoActive || isOptimizing) && (
+            <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 pointer-events-auto flex flex-col items-center max-w-[95%] sm:max-w-2xl w-full px-2">
+              <div className="bg-[#070E1A]/95 backdrop-blur-xl border border-cyan-500/40 rounded-2xl px-4 py-2 shadow-2xl w-full flex flex-col gap-1">
+                
+                {/* Upper line: Round & Event Name */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center space-x-2">
+                    <span className="px-2 py-0.5 rounded-lg bg-cyan-500/20 text-cyan-300 font-extrabold text-[11px] border border-cyan-500/30 font-mono">
+                      ROUND {currentRound}
+                    </span>
+                    <span className="text-white font-extrabold text-xs sm:text-sm tracking-wide font-mono flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                      EVENT: {activeStageInfo.name.toUpperCase()}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    {!isPlaying && (
+                      <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/40">
+                        PAUSED (FROZEN)
+                      </span>
+                    )}
+                    <span className="text-[10px] text-cyan-400 font-bold font-mono">
+                      STAGE 0{activeStageInfo.stageNumber}/08 ({eventProgressPct}%)
+                    </span>
+                  </div>
+                </div>
+
+                {/* Middle line: Dynamic Event Action Detail */}
+                <div className="text-[11px] text-slate-300 font-sans truncate">
+                  {activeStageInfo.stageNumber === 1 && `Swarm / Multi-objective evaluation: Selecting energy-rich Cluster Heads`}
+                  {activeStageInfo.stageNumber === 2 && `Calculating euclidean distances & forming active cluster links`}
+                  {activeStageInfo.stageNumber === 3 && `Member sensors transmitting telemetry packets to nearest Cluster Head`}
+                  {activeStageInfo.stageNumber === 4 && `Cluster Heads receive packets & register telemetry into buffer`}
+                  {activeStageInfo.stageNumber === 5 && `Cluster Heads fuse and compress multiple sensor packets into super-packet`}
+                  {activeStageInfo.stageNumber === 6 && `Cluster Heads firing long-range directional laser uplink to Base Station`}
+                  {activeStageInfo.stageNumber === 7 && `Sink received & verified telemetry data at coordinates (${activeScenario.sinkX}, ${activeScenario.sinkY})`}
+                  {activeStageInfo.stageNumber === 8 && `First-order radio energy dissipation applied to active nodes`}
+                </div>
+
+                {/* Bottom line: 8 Discrete Stage Sequence Indicators */}
+                <div className="grid grid-cols-8 gap-1 pt-1 border-t border-[#1C3150]/60">
+                  {EVENT_STAGES.map((st, i) => (
+                    <button
+                      key={st.stageNumber}
+                      onClick={() => {
+                        soundFX.playClickSound();
+                        roundPhaseTimerRef.current = st.startP + 0.005;
+                        setActiveEventIndex(i);
+                      }}
+                      className={`h-1.5 rounded-full transition-all cursor-pointer ${
+                        i === activeEventIndex
+                          ? 'bg-cyan-400 shadow-md shadow-cyan-400/50'
+                          : i < activeEventIndex
+                          ? 'bg-cyan-700/60'
+                          : 'bg-slate-800'
+                      }`}
+                      title={`Stage ${st.stageNumber}: ${st.name}`}
+                    />
+                  ))}
+                </div>
+
+              </div>
+            </div>
+          )}
+
+          {/* Floating Research Demo Progress Banner */}
+          {(isResearchDemoActive || isOptimizing) && (
+            <div className="absolute top-14 left-1/2 -translate-x-1/2 z-30 pointer-events-auto bg-[#070E1A]/95 backdrop-blur-xl border border-cyan-500/50 rounded-2xl px-4 py-2 shadow-2xl flex items-center space-x-3 text-xs animate-fadeIn max-w-[90%] sm:max-w-xl">
+              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center space-x-2">
+                  <span className="font-extrabold text-cyan-300 uppercase tracking-wider text-[10px]">
+                    {isResearchDemoActive ? `RESEARCH DEMO (PHASE ${researchDemoStep}/18)` : `PSO ITERATION ${currentOptIteration}/15`}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-200 truncate">
+                  {researchDemoNarrative || 'Executing ANN-Guided Spatial Swarm Optimization...'}
+                </p>
+              </div>
+              {isResearchDemoActive && (
+                <button
+                  onClick={() => stopResearchDemo()}
+                  className="px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30 text-[10px] font-bold cursor-pointer transition-all shrink-0"
+                >
+                  STOP
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Left Vertical Tool Dock (Inspect, Relocate, Inject, Remove) */}
+          <div className="absolute left-3.5 top-16 z-20 flex flex-col space-y-1.5 pointer-events-auto bg-[#070E1A]/90 backdrop-blur-xl p-1.5 rounded-2xl border border-[#1C3150] shadow-2xl">
+            {/* 1. Inspect */}
+            <button
+              onClick={() => {
+                soundFX.playClickSound();
+                setToolMode('inspect');
+              }}
+              className={`p-2 rounded-xl font-bold flex items-center space-x-2 transition-all text-xs cursor-pointer ${
+                toolMode === 'inspect'
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/60 shadow-md shadow-cyan-500/20'
+                  : 'text-slate-400 hover:text-white border border-transparent'
+              }`}
+              title="Inspect Mode: Click any sensor to inspect telemetry"
+            >
+              <Crosshair className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="hidden xl:inline">Inspect</span>
+            </button>
+
+            {/* 2. Relocate */}
+            <button
+              onClick={() => {
+                soundFX.playClickSound();
+                setToolMode('relocate');
+              }}
+              className={`p-2 rounded-xl font-bold flex items-center space-x-2 transition-all text-xs cursor-pointer ${
+                toolMode === 'relocate'
+                  ? 'bg-blue-500/20 text-blue-300 border border-blue-400/60 shadow-md shadow-blue-500/20'
+                  : 'text-slate-400 hover:text-white border border-transparent'
+              }`}
+              title="Relocate Mode: Click any sensor to reposition"
+            >
+              <Move className="w-3.5 h-3.5 text-blue-400" />
+              <span className="hidden xl:inline">Relocate</span>
+            </button>
+
+            {/* 3. Inject */}
+            <button
+              onClick={() => {
+                soundFX.playClickSound();
+                setToolMode('inject');
+              }}
+              className={`p-2 rounded-xl font-bold flex items-center space-x-2 transition-all text-xs cursor-pointer ${
+                toolMode === 'inject'
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/60 shadow-md shadow-emerald-500/20'
+                  : 'text-slate-400 hover:text-white border border-transparent'
+              }`}
+              title="Inject Mode: Click any sensor to inject +0.2J battery energy"
+            >
+              <PlusCircle className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden xl:inline">Inject</span>
+            </button>
+
+            {/* 4. Remove / Disable */}
+            <button
+              onClick={() => {
+                soundFX.playClickSound();
+                setToolMode('remove');
+              }}
+              className={`p-2 rounded-xl font-bold flex items-center space-x-2 transition-all text-xs cursor-pointer ${
+                toolMode === 'remove'
+                  ? 'bg-rose-500/20 text-rose-300 border border-rose-400/60 shadow-md shadow-rose-500/20'
+                  : 'text-slate-400 hover:text-white border border-transparent'
+              }`}
+              title="Remove Mode: Click any sensor to toggle active/sleep/dead state"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+              <span className="hidden xl:inline">Remove</span>
+            </button>
+          </div>
+
+          {/* Left View Mode Selector */}
+          <div className="absolute left-3.5 top-56 z-20 flex flex-col space-y-1 pointer-events-auto bg-[#070E1A]/90 backdrop-blur-xl p-1.5 rounded-2xl border border-[#1C3150] shadow-2xl">
+            <span className="text-[9px] uppercase font-bold text-slate-400 px-1 pt-0.5 tracking-wider text-center">
+              View Mode
+            </span>
+            {(['full', 'network', 'coverage', 'routing', 'energy', 'voronoi'] as VisMode[]).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => {
+                  soundFX.playClickSound();
+                  setVisMode(mode);
+                }}
+                className={`px-2 py-1 rounded-xl font-bold uppercase transition-all text-[9.5px] cursor-pointer text-left ${
+                  visMode === mode
+                    ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
+                    : 'text-slate-400 hover:text-white border border-transparent'
                 }`}
               >
-                {isStoryPlaying ? 'Pause Tour' : 'Play Tour'}
+                {mode}
               </button>
-              <button
-                onClick={nextStoryStep}
-                className="px-2.5 py-1 rounded-xl bg-[#070B14] border border-[#1C3150] text-slate-300 hover:text-white transition-all cursor-pointer"
-              >
-                Next ▶
-              </button>
-              <button
-                onClick={stopStoryMode}
-                className="px-2.5 py-1 rounded-xl bg-rose-950/40 border border-rose-500/30 text-rose-300 hover:bg-rose-900/60 transition-all cursor-pointer"
-              >
-                Exit Tour ✕
-              </button>
+            ))}
+          </div>
+
+          {/* 3D Canvas Viewport */}
+          <div
+            ref={containerRef}
+            onPointerMove={handlePointerMove}
+            onPointerLeave={handlePointerLeave}
+            onClick={handleClick}
+            className="w-full h-full relative z-0 cursor-grab active:cursor-grabbing overflow-hidden"
+          />
+
+          {/* Floating Compact ANN Coverage Predictor HUD Card */}
+          <div className="absolute top-16 right-3.5 z-20 pointer-events-auto bg-[#070E1A]/90 backdrop-blur-xl border border-cyan-500/40 rounded-2xl p-3 shadow-2xl text-[11px] font-mono space-y-2 min-w-[210px] hidden sm:block">
+            <div className="flex items-center justify-between pb-1.5 border-b border-[#1C3150]">
+              <span className="font-extrabold text-white flex items-center gap-1.5 text-xs">
+                <Brain className="w-3.5 h-3.5 text-cyan-400" />
+                <span>ANN PREDICTOR</span>
+              </span>
+              <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase ${
+                isANNRunning || isOptimizing
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400 animate-pulse'
+                  : 'bg-emerald-500/20 text-emerald-300 border border-emerald-400'
+              }`}>
+                {isANNRunning ? 'INFERRING' : isOptimizing ? 'SWARM OPT' : 'ACTIVE'}
+              </span>
+            </div>
+
+            <div className="space-y-1 text-[10px]">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Input:</span>
+                <span className="text-cyan-300 font-bold">10-D Spatial Tensor</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Coverage Pred:</span>
+                <span className="text-emerald-400 font-bold">
+                  {annInferenceResult ? `${annInferenceResult.predictedCoveragePct.toFixed(2)}%` : '94.72%'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Overlap Pred:</span>
+                <span className="text-rose-400 font-bold">
+                  {annInferenceResult ? `${annInferenceResult.predictedOverlapPct.toFixed(2)}%` : '21.38%'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Blindspot Risk:</span>
+                <span className="text-purple-400 font-bold">
+                  {annInferenceResult ? `${annInferenceResult.predictedBlindspotPct.toFixed(2)}%` : '3.17%'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Confidence:</span>
+                <span className="text-cyan-400 font-bold">
+                  {annInferenceResult ? annInferenceResult.confidence.toFixed(2) : '0.91'}
+                </span>
+              </div>
             </div>
           </div>
 
-          <p className="text-xs sm:text-sm text-cyan-200 font-sans leading-relaxed">
-            {currentStoryInfo.explanation}
-          </p>
-
-          {/* Story Progress Bar */}
-          <div className="w-full bg-[#070B14] h-1.5 rounded-full overflow-hidden border border-[#1C3150]/50">
-            <div 
-              className="bg-gradient-to-r from-cyan-400 via-blue-500 to-purple-500 h-full rounded-full transition-all duration-300"
-              style={{ width: `${(storyStep / 12) * 100}%` }}
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Protocol Explanation Banner */}
-      <div className="p-3.5 rounded-2xl bg-[#0B1220] border border-[#1C3150] flex flex-wrap items-center justify-between gap-3 text-xs">
-        <div className="flex items-center space-x-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse"></span>
-          <span className="font-bold text-white uppercase tracking-wider">
-            Active Protocol: <span className="text-cyan-400">{selectedProtocol.toUpperCase()}</span>
-          </span>
-        </div>
-        <p className="text-slate-300 text-xs font-sans max-w-4xl leading-relaxed">
-          {selectedProtocol === 'pso_hybrid' && (
-            <span><strong>Proposed ANN + PSO-Hybrid:</strong> 44% redundant nodes sleep (zero drain), Voronoi clustering forms optimal load-balanced cells, with intra-cluster chains and multi-hop CH relays to Sink.</span>
-          )}
-          {selectedProtocol === 'pegasis' && (
-            <span><strong>PEGASIS Protocol:</strong> Forms a single greedy sequential communication chain across active sensors. Data hops neighbor-to-neighbor to the round leader, which beams to the Base Station.</span>
-          )}
-          {selectedProtocol === 'leach' && (
-            <span><strong>LEACH Protocol:</strong> Cluster Heads are elected randomly. Non-CH sensors transmit directly to their nearest Cluster Head, which aggregate and transmit directly to the Sink.</span>
-          )}
-        </p>
-      </div>
-
-      {/* Title & Research Subtitle */}
-      <div className="space-y-1">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h1 className="text-xl sm:text-2xl font-bold text-white tracking-wide font-mono flex items-center gap-2">
-            <span>Field Topology &amp; Cluster Deployment</span>
-            <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold border ${
-              uiMode === 'beginner'
-                ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30'
-            }`}>
-              {uiMode === 'beginner' ? 'BEGINNER MODE' : 'RESEARCH MODE'}
-            </span>
-          </h1>
-
-          {/* Presentation Mode & Explain Tour Trigger Buttons */}
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={startStoryMode}
-              className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-bold hover:opacity-95 transition-all shadow-md shadow-cyan-500/20 flex items-center space-x-1.5 cursor-pointer"
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Explain Simulation (12 Steps)</span>
-            </button>
-            <button
-              onClick={() => setIsPresentationMode(!isPresentationMode)}
-              className={`px-3.5 py-1.5 rounded-xl font-bold border transition-all cursor-pointer ${
-                isPresentationMode
-                  ? 'bg-purple-600 text-white border-purple-400 shadow-md shadow-purple-500/30'
-                  : 'bg-[#0D1626] text-slate-300 border-[#1C3150] hover:text-white'
-              }`}
-            >
-              {isPresentationMode ? 'Exit Presentation' : 'Presentation Mode'}
-            </button>
-          </div>
-        </div>
-
-        <p className="text-xs text-slate-400 leading-relaxed font-sans">
-          Realistic 3D Cyber-Physical Digital Twin featuring physical sensor devices, volumetric translucent coverage domes, multi-hop routing paths, and Base Station relay.
-        </p>
-      </div>
-
-      {/* Main 2-Column Showcase (3D Viewport on Left + Parameters Panel on Right) */}
-      <div className={`grid grid-cols-1 ${isPresentationMode ? 'lg:grid-cols-12' : 'lg:grid-cols-12'} gap-6 items-start`}>
-        
-        {/* ========================================================= */}
-        {/* LEFT COLUMN: 3D DIGITAL TWIN VIEWPORT (8 cols or 12 cols in Pres Mode) */}
-        {/* ========================================================= */}
-        <div className={isPresentationMode ? 'lg:col-span-12 space-y-4' : 'lg:col-span-8 space-y-4'}>
-          
-          <TiltCard3D 
-            intensity={3}
-            className="rounded-3xl border border-[#1C3150] bg-[#070B14] shadow-2xl overflow-hidden relative group"
-          >
-            {/* Top Overlay: Spatial Coordinates Badge & Fullscreen */}
-            <div className="absolute top-3.5 left-3.5 right-3.5 z-10 flex items-center justify-between pointer-events-none">
-              
-              {/* Dynamic Field Information Badge */}
-              <div className="px-3.5 py-1.5 rounded-xl bg-[#0B1220]/90 backdrop-blur-md border border-cyan-500/30 text-cyan-300 font-bold flex items-center space-x-2 text-[11px] shadow-lg pointer-events-auto">
-                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
-                <span>{W}m × {H}m SPATIAL FIELD • N = {telemetry.totalNodes} • Rs = {sensingRad}m • Rc = {commRad}m • Sink ({activeScenario.sinkX}, {activeScenario.sinkY})</span>
+          {/* Floating Before vs After Result Comparison Card */}
+          {beforeAfterMetrics && (
+            <div className="absolute top-64 right-3.5 z-20 pointer-events-auto bg-[#070E1A]/95 backdrop-blur-xl border border-emerald-500/40 rounded-2xl p-3 shadow-2xl text-[10px] font-mono space-y-1.5 min-w-[210px] hidden sm:block animate-fadeIn">
+              <div className="flex items-center justify-between pb-1 border-b border-[#1C3150]">
+                <span className="font-extrabold text-emerald-300 flex items-center gap-1 text-[11px]">
+                  <TrendingUp className="w-3 h-3 text-emerald-400" />
+                  <span>ANN+PSO RESULT</span>
+                </span>
+                <span className="text-[8.5px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold">
+                  CONVERGED
+                </span>
               </div>
 
-              {/* Top-Right FPS & Fullscreen Badge */}
-              <div className="flex items-center space-x-2 pointer-events-auto">
-                <div className="px-3 py-1.5 rounded-xl bg-[#0B1220]/90 backdrop-blur-md border border-[#1C3150] text-slate-400 font-bold text-[10px] tracking-wider uppercase shadow-lg">
-                  60 FPS • THREE.JS 3D ENGINE
+              <div className="space-y-1">
+                <div className="flex justify-between text-slate-300">
+                  <span>Coverage:</span>
+                  <span className="text-emerald-400 font-bold">
+                    {beforeAfterMetrics.beforeCoverage.toFixed(1)}% &rarr; {beforeAfterMetrics.afterCoverage.toFixed(1)}% ({beforeAfterMetrics.deltaCoverage >= 0 ? '+' : ''}{beforeAfterMetrics.deltaCoverage.toFixed(1)}%)
+                  </span>
                 </div>
-                <button
-                  onClick={toggleFullscreen}
-                  className="p-1.5 rounded-xl bg-[#0B1220]/90 backdrop-blur-md border border-[#1C3150] text-slate-400 hover:text-white transition-all shadow-lg cursor-pointer"
-                  title="Toggle Fullscreen"
-                >
-                  {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-                </button>
+                <div className="flex justify-between text-slate-300">
+                  <span>Overlap:</span>
+                  <span className="text-rose-300 font-bold">
+                    {beforeAfterMetrics.beforeOverlap.toFixed(1)}% &rarr; {beforeAfterMetrics.afterOverlap.toFixed(1)}% ({beforeAfterMetrics.deltaOverlap.toFixed(1)}%)
+                  </span>
+                </div>
+                <div className="flex justify-between text-slate-300">
+                  <span>Blindspots:</span>
+                  <span className="text-purple-300 font-bold">
+                    {beforeAfterMetrics.beforeBlindspots.toFixed(1)}% &rarr; {beforeAfterMetrics.afterBlindspots.toFixed(1)}% ({beforeAfterMetrics.deltaBlindspots.toFixed(1)}%)
+                  </span>
+                </div>
+                <div className="flex justify-between text-slate-400 text-[9px] pt-0.5 border-t border-[#1C3150]/60">
+                  <span>Net Displacement:</span>
+                  <span className="text-amber-300 font-bold">{beforeAfterMetrics.displacementEnergyCost.toFixed(1)}m</span>
+                </div>
               </div>
             </div>
+          )}
 
-            {/* 3D Canvas Viewport */}
+          {/* Floating 3D Hover Tooltip */}
+          {hoveredNode && hoverScreenPos && (
             <div
-              ref={containerRef}
-              onPointerMove={handlePointerMove}
-              onPointerLeave={handlePointerLeave}
-              onClick={handleClick}
-              className={`w-full ${isPresentationMode ? 'h-[650px] sm:h-[720px]' : 'h-[540px] sm:h-[600px]'} relative z-0`}
-            />
+              className="absolute z-30 pointer-events-none bg-[#070E1A]/95 backdrop-blur-xl border border-cyan-500/40 rounded-2xl p-3 shadow-2xl text-xs font-mono space-y-1 min-w-[220px] animate-fadeIn"
+              style={{
+                left: Math.min(hoverScreenPos.x + 15, (containerRef.current?.clientWidth || 500) - 240),
+                top: Math.max(15, hoverScreenPos.y - 100)
+              }}
+            >
+              <div className="flex items-center justify-between pb-1 border-b border-cyan-500/20">
+                <span className="font-extrabold text-cyan-300">NODE #{hoveredNode.node_id}</span>
+                <span className={`text-[9px] px-1.5 py-0.2 rounded font-bold uppercase ${
+                  activeClusterHeads.includes(hoveredNode.node_id)
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                    : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                }`}>
+                  {activeClusterHeads.includes(hoveredNode.node_id) ? 'Cluster Head' : hoveredNode.node_type}
+                </span>
+              </div>
+              <div className="flex justify-between text-[10px] text-slate-300">
+                <span>Coordinates:</span>
+                <span className="text-white font-bold">({hoveredNode.x.toFixed(1)}m, {hoveredNode.y.toFixed(1)}m)</span>
+              </div>
+              <div className="flex justify-between text-[10px] text-slate-300">
+                <span>Energy:</span>
+                <span className="text-cyan-400 font-bold">{hoveredNode.currentEnergy.toFixed(3)} J</span>
+              </div>
+            </div>
+          )}
 
-            {/* Floating 3D Tooltip on Hover */}
-            {hoveredNode && hoverScreenPos && (
-              <div
-                className="absolute z-30 pointer-events-none bg-[#0D1626]/95 backdrop-blur-md border border-cyan-500/40 rounded-2xl p-3 shadow-2xl shadow-cyan-500/20 text-xs font-mono space-y-1.5 min-w-[220px] animate-fadeIn"
-                style={{
-                  left: Math.min(hoverScreenPos.x + 15, (containerRef.current?.clientWidth || 600) - 240),
-                  top: Math.max(15, hoverScreenPos.y - 95)
-                }}
+          {/* Bottom Floating Camera & Visual Layer Overlays */}
+          <div className="absolute bottom-3.5 left-1/2 -translate-x-1/2 z-20 pointer-events-auto">
+            <div className="flex items-center space-x-1.5 bg-[#070E1A]/90 backdrop-blur-xl p-1.5 rounded-full border border-[#1C3150] shadow-2xl text-xs flex-wrap justify-center">
+              {/* 1. Perspective View */}
+              <button
+                onClick={() => setCameraPreset('perspective')}
+                className={`px-3 py-1.5 rounded-full font-bold transition-all text-xs cursor-pointer ${
+                  activeCamPreset === 'perspective' && !is360Rotating
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/60 shadow-md shadow-cyan-500/20'
+                    : 'text-slate-400 hover:text-white border border-transparent'
+                }`}
+                title="Elevated 3/4 Perspective"
               >
-                <div className="flex items-center justify-between pb-1 border-b border-cyan-500/20">
-                  <span className="font-extrabold text-cyan-300">NODE #{hoveredNode.node_id}</span>
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold uppercase ${
-                    activeClusterHeads.includes(hoveredNode.node_id)
-                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                      : hoveredNode.node_type === 'super'
-                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                      : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
-                  }`}>
-                    {activeClusterHeads.includes(hoveredNode.node_id) ? 'Cluster Head' : hoveredNode.node_type}
-                  </span>
-                </div>
-                
-                {/* ANN Classification Badge */}
-                <div className="flex items-center justify-between py-0.5 px-1.5 rounded bg-violet-500/10 border border-violet-500/20 text-[10px]">
-                  <span className="text-violet-300 font-bold flex items-center gap-1">
-                    <Brain className="w-3 h-3 text-violet-400" /> ANN State:
-                  </span>
-                  <span className={hoveredNode.final_state === 'SLEEP' ? 'text-violet-300 font-bold' : 'text-cyan-400 font-bold'}>
-                    {hoveredNode.final_state === 'SLEEP' ? 'SLEEP (Pruned)' : 'ACTIVE (98.4%)'}
-                  </span>
-                </div>
+                Perspective
+              </button>
 
-                <div className="flex justify-between text-slate-300 text-[11px]">
-                  <span>Coordinates:</span>
-                  <span className="text-white font-bold">({hoveredNode.x.toFixed(1)}m, {hoveredNode.y.toFixed(1)}m)</span>
-                </div>
-                <div className="flex justify-between text-slate-300 text-[11px]">
-                  <span>Residual Energy:</span>
-                  <span className="text-cyan-400 font-bold">{hoveredNode.currentEnergy.toFixed(3)} J</span>
-                </div>
-                {/* Battery Bar */}
-                <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                  <div 
-                    className="bg-gradient-to-r from-cyan-500 to-blue-500 h-full rounded-full transition-all"
-                    style={{ width: `${(hoveredNode.currentEnergy / hoveredNode.energy) * 100}%` }}
-                  />
-                </div>
-                <div className="flex justify-between text-[10px] text-slate-400 pt-0.5">
-                  <span>Status: <strong className={hoveredNode.isAlive ? 'text-emerald-400' : 'text-rose-400'}>{hoveredNode.isAlive ? 'ONLINE' : 'DEAD'}</strong></span>
-                  <span>Packets: <strong className="text-cyan-300">{hoveredNode.packetsSent}</strong></span>
-                </div>
-              </div>
-            )}
+              {/* 2. Top-Down View */}
+              <button
+                onClick={() => setCameraPreset('top')}
+                className={`px-3 py-1.5 rounded-full font-bold transition-all text-xs cursor-pointer ${
+                  activeCamPreset === 'top' && !is360Rotating
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/60 shadow-md shadow-cyan-500/20'
+                    : 'text-slate-400 hover:text-white border border-transparent'
+                }`}
+                title="Top-Down Planar View"
+              >
+                Top-Down
+              </button>
 
-            {/* Floating 7-Camera Modes & Simulation Controls Dock */}
-            <div className="absolute bottom-3 left-3 right-3 z-10 flex flex-wrap items-center justify-between gap-2 p-2 rounded-2xl bg-[#070B14]/90 backdrop-blur-xl border border-[#1C3150] shadow-2xl">
+              {/* 3. Cinematic Sink View */}
+              <button
+                onClick={() => setCameraPreset('sink')}
+                className={`px-3 py-1.5 rounded-full font-bold transition-all text-xs cursor-pointer ${
+                  activeCamPreset === 'sink' && !is360Rotating
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-400/60 shadow-md shadow-amber-500/20'
+                    : 'text-slate-400 hover:text-white border border-transparent'
+                }`}
+                title="Sink Perspective"
+              >
+                Sink View
+              </button>
+
+              {/* 4. ↻ 360° Motion Orbit */}
+              <button
+                onClick={() => setCameraPreset('orbit')}
+                className={`px-3 py-1.5 rounded-full font-bold transition-all text-xs cursor-pointer ${
+                  activeCamPreset === 'orbit' || is360Rotating
+                    ? 'bg-blue-500/20 text-blue-300 border border-blue-400/60 shadow-md shadow-blue-500/20'
+                    : 'text-slate-400 hover:text-white border border-transparent'
+                }`}
+                title="Toggle Cinematic 360° Orbit"
+              >
+                ↻ 360°
+              </button>
+
+              {/* 5. ANN Node Heatmap Toggle */}
+              <button
+                onClick={() => {
+                  soundFX.playClickSound();
+                  setAnnHeatmapMode(!annHeatmapMode);
+                }}
+                className={`px-3 py-1.5 rounded-full font-bold transition-all text-xs cursor-pointer ${
+                  annHeatmapMode
+                    ? 'bg-cyan-500 text-slate-950 font-black shadow-md'
+                    : 'text-slate-400 hover:text-white border border-transparent'
+                }`}
+                title="Toggle ANN Prediction Node Colors (Green/Yellow/Red/Purple)"
+              >
+                ANN Heatmap
+              </button>
+
+              {/* 6. ANN Vectors Toggle */}
+              <button
+                onClick={() => {
+                  soundFX.playClickSound();
+                  setShowANNMoveVectors(!showANNMoveVectors);
+                }}
+                className={`px-3 py-1.5 rounded-full font-bold transition-all text-xs cursor-pointer ${
+                  showANNMoveVectors
+                    ? 'bg-blue-500/20 text-blue-300 border border-blue-400/60 shadow-md shadow-blue-500/20'
+                    : 'text-slate-400 hover:text-white border border-transparent'
+                }`}
+                title="Toggle ANN Movement Recommendation Vectors"
+              >
+                ANN Vectors
+              </button>
+
+              {/* 7. Overlap Concentration Heatmap Toggle */}
+              <button
+                onClick={() => {
+                  soundFX.playClickSound();
+                  setShowOverlapConcentration(!showOverlapConcentration);
+                }}
+                className={`px-3 py-1.5 rounded-full font-bold transition-all text-xs cursor-pointer ${
+                  showOverlapConcentration
+                    ? 'bg-rose-500/20 text-rose-300 border border-rose-400/60 shadow-md shadow-rose-500/20'
+                    : 'text-slate-400 hover:text-white border border-transparent'
+                }`}
+                title="Toggle Ground Overlap Concentration Heatmap"
+              >
+                Overlap Map
+              </button>
+
+              {/* 8. Blindspot Holes Map Toggle */}
+              <button
+                onClick={() => {
+                  soundFX.playClickSound();
+                  setShowBlindspotHoles(!showBlindspotHoles);
+                }}
+                className={`px-3 py-1.5 rounded-full font-bold transition-all text-xs cursor-pointer ${
+                  showBlindspotHoles
+                    ? 'bg-purple-500/20 text-purple-300 border border-purple-400/60 shadow-md shadow-purple-500/20'
+                    : 'text-slate-400 hover:text-white border border-transparent'
+                }`}
+                title="Toggle Unmonitored Blindspot Holes Map"
+              >
+                Blindspots
+              </button>
+
+              {/* 9. Disk Bubbles Toggle */}
+              <button
+                onClick={() => {
+                  soundFX.playClickSound();
+                  setShowDiskBubbles(!showDiskBubbles);
+                }}
+                className={`px-3 py-1.5 rounded-full font-bold transition-all text-xs cursor-pointer ${
+                  showDiskBubbles
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/60 shadow-md shadow-emerald-500/20'
+                    : 'text-slate-400 hover:text-white border border-transparent'
+                }`}
+                title="Toggle Translucent Sensing Range Disks"
+              >
+                Sensing Disks
+              </button>
+            </div>
+          </div>
+
+          {/* Bottom Floating Presentation Control Bar (Visible in Presentation Mode) */}
+          {isPresentationMode && (
+            <div className="absolute bottom-4 left-3.5 right-3.5 z-30 pointer-events-auto flex flex-wrap items-center justify-between gap-3 p-3 px-4 rounded-2xl bg-[#070E1A]/95 backdrop-blur-xl border border-cyan-500/40 shadow-2xl">
               
-              {/* 7 Camera Presets */}
-              <div className="flex flex-wrap items-center gap-1">
+              {/* Left: Playback Controls */}
+              <div className="flex items-center space-x-2">
                 <button
-                  onClick={() => setCameraPreset('perspective')}
-                  className={`px-2.5 py-1 rounded-xl font-bold transition-all text-xs cursor-pointer ${
-                    activeCamPreset === 'perspective' && !is360Rotating
-                      ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
-                      : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  onClick={handleStepBackwardEvent}
+                  className="p-2 px-2.5 rounded-xl bg-[#050912] border border-[#1C3150] text-slate-300 hover:text-white transition-all cursor-pointer flex items-center space-x-1"
+                  title="Step Backward 1 Event Stage"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <span className="text-[10px] font-bold">PREV</span>
+                </button>
+
+                <button
+                  onClick={handleToggleStream}
+                  className={`py-2 px-4 rounded-xl font-bold flex items-center space-x-2 transition-all text-xs cursor-pointer shadow-lg active:scale-95 ${
+                    isPlaying
+                      ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/25'
+                      : 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-emerald-500/25'
                   }`}
                 >
-                  Perspective
+                  <span>{isPlaying ? 'PAUSE TIMELINE' : 'STREAM SIMULATION'}</span>
                 </button>
+
                 <button
-                  onClick={() => setCameraPreset('top')}
-                  className={`px-2.5 py-1 rounded-xl font-bold transition-all text-xs cursor-pointer ${
-                    activeCamPreset === 'top' && !is360Rotating
-                      ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
-                      : 'text-slate-400 hover:text-white hover:bg-white/5'
-                  }`}
+                  onClick={handleStepForwardEvent}
+                  className="p-2 px-3 rounded-xl bg-[#050912] border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/20 transition-all cursor-pointer flex items-center space-x-1"
+                  title="Step Forward Exactly 1 Event Stage"
                 >
-                  Top-Down
-                </button>
-                <button
-                  onClick={() => setCameraPreset('isometric')}
-                  className={`px-2.5 py-1 rounded-xl font-bold transition-all text-xs cursor-pointer ${
-                    activeCamPreset === 'isometric' && !is360Rotating
-                      ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
-                      : 'text-slate-400 hover:text-white hover:bg-white/5'
-                  }`}
-                >
-                  Isometric
-                </button>
-                <button
-                  onClick={() => setCameraPreset('sink')}
-                  className={`px-2.5 py-1 rounded-xl font-bold transition-all text-xs cursor-pointer ${
-                    activeCamPreset === 'sink' && !is360Rotating
-                      ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
-                      : 'text-slate-400 hover:text-white hover:bg-white/5'
-                  }`}
-                >
-                  Sink View
-                </button>
-                <button
-                  onClick={() => setCameraPreset('orbit')}
-                  className={`px-2.5 py-1 rounded-xl font-bold transition-all text-xs cursor-pointer ${
-                    activeCamPreset === 'orbit' || is360Rotating
-                      ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                      : 'text-slate-400 hover:text-white hover:bg-white/5'
-                  }`}
-                >
-                  ↻ 360° Orbit
-                </button>
-                <button
-                  onClick={() => setCameraPreset('follow_packet')}
-                  className={`px-2.5 py-1 rounded-xl font-bold transition-all text-xs cursor-pointer ${
-                    activeCamPreset === 'follow_packet'
-                      ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
-                      : 'text-slate-400 hover:text-white hover:bg-white/5'
-                  }`}
-                >
-                  Follow Packet
-                </button>
-                <button
-                  onClick={() => setCameraPreset('follow_node')}
-                  className={`px-2.5 py-1 rounded-xl font-bold transition-all text-xs cursor-pointer ${
-                    activeCamPreset === 'follow_node'
-                      ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20'
-                      : 'text-slate-400 hover:text-white hover:bg-white/5'
-                  }`}
-                >
-                  Follow Node
-                </button>
-                <button
-                  onClick={() => setCameraPreset('reset')}
-                  className="px-2 py-1 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 transition-all text-xs cursor-pointer"
-                  title="Reset Camera"
-                >
-                  Reset
+                  <span className="text-[10px] font-bold">STEP EVENT</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
                 </button>
               </div>
 
-              {/* Simulation Player Controls & Speed */}
+              {/* Center: Live Research Metrics HUD */}
+              <div className="flex items-center space-x-3 text-[11px] font-mono hidden md:flex">
+                <div className="px-2.5 py-1 rounded-xl bg-[#0B1220] border border-[#1C3150]">
+                  <span className="text-slate-500 text-[9px] uppercase block font-bold">Coverage</span>
+                  <span className="text-cyan-300 font-extrabold">{telemetry.currentCoveragePct.toFixed(1)}%</span>
+                </div>
+                <div className="px-2.5 py-1 rounded-xl bg-[#0B1220] border border-[#1C3150]">
+                  <span className="text-slate-500 text-[9px] uppercase block font-bold">Overlap</span>
+                  <span className="text-amber-400 font-extrabold">{telemetry.currentOverlapPct.toFixed(1)}%</span>
+                </div>
+                <div className="px-2.5 py-1 rounded-xl bg-[#0B1220] border border-[#1C3150]">
+                  <span className="text-slate-500 text-[9px] uppercase block font-bold">Avg Battery</span>
+                  <span className="text-emerald-400 font-extrabold">{telemetry.avgResidualEnergy.toFixed(3)} J</span>
+                </div>
+                <div className="px-2.5 py-1 rounded-xl bg-[#0B1220] border border-[#1C3150]">
+                  <span className="text-slate-500 text-[9px] uppercase block font-bold">Round</span>
+                  <span className="text-white font-extrabold">R{currentRound} ({protocolNameMap[selectedProtocol]})</span>
+                </div>
+              </div>
+
+              {/* Right: Presentation Speed Bar & Research Demo */}
               <div className="flex items-center space-x-2">
-                
-                {/* Speed Multipliers */}
+                <span className="text-[10px] text-slate-400 font-bold uppercase">SPEED:</span>
                 <div className="flex items-center bg-[#0B1220] rounded-xl border border-[#1C3150] p-0.5">
                   {[0.25, 0.5, 1, 2, 4].map((spd) => (
                     <button
                       key={spd}
                       onClick={() => {
                         soundFX.playClickSound();
-                        setSimSpeed(spd);
+                        setPlaybackSpeed(spd);
                       }}
-                      className={`px-1.5 py-0.5 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
-                        simSpeed === spd
-                          ? 'bg-cyan-500 text-slate-950 font-black'
+                      className={`px-2 py-1 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
+                        playbackSpeed === spd
+                          ? 'bg-cyan-500 text-slate-950 font-black shadow'
                           : 'text-slate-400 hover:text-white'
                       }`}
                     >
@@ -1418,444 +2606,311 @@ export const WSN3DVisualizer: React.FC = () => {
                   ))}
                 </div>
 
-                {/* Play / Pause */}
                 <button
-                  onClick={handleToggleStream}
-                  className={`px-3 py-1 rounded-xl font-bold flex items-center space-x-1.5 transition-all text-xs cursor-pointer ${
-                    isPlaying 
-                      ? 'bg-amber-500 text-slate-950 hover:bg-amber-400 shadow-md shadow-amber-500/20' 
-                      : 'bg-cyan-500 text-slate-950 hover:bg-cyan-400 shadow-md shadow-cyan-500/20'
-                  }`}
+                  onClick={() => startResearchDemo()}
+                  disabled={isResearchDemoActive || isOptimizing}
+                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 text-slate-950 font-extrabold text-[10px] cursor-pointer shadow hover:opacity-95 transition-all"
                 >
-                  {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                  <span>{isPlaying ? 'Pause' : 'Run Simulation'}</span>
-                </button>
-
-                {/* Reset */}
-                <button
-                  onClick={handleResetDistribution}
-                  className="p-1.5 rounded-xl bg-[#0B1220] border border-[#1C3150] text-slate-400 hover:text-white transition-all cursor-pointer"
-                  title="Reset Simulation"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
+                  {isResearchDemoActive ? 'DEMO ACTIVE...' : 'RUN RESEARCH DEMO'}
                 </button>
               </div>
 
             </div>
-
-          </TiltCard3D>
-
-          {/* Floating Layer Visibility Filter Bar */}
-          <div className="p-3.5 rounded-2xl bg-[#0B1220] border border-[#1C3150] flex flex-wrap items-center justify-between gap-3 text-xs text-slate-300">
-            <div className="flex items-center space-x-2 text-cyan-400 font-bold">
-              <Eye className="w-4 h-4" />
-              <span>Layer Filters:</span>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-4">
-              <label className="flex items-center space-x-1.5 cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  checked={showCoverage} 
-                  onChange={(e) => setShowCoverage(e.target.checked)}
-                  className="rounded border-[#1C3150] accent-cyan-400 cursor-pointer"
-                />
-                <span>Coverage</span>
-              </label>
-
-              <label className="flex items-center space-x-1.5 cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  checked={showCommLinks} 
-                  onChange={(e) => setShowCommLinks(e.target.checked)}
-                  className="rounded border-[#1C3150] accent-cyan-400 cursor-pointer"
-                />
-                <span>Comm Links</span>
-              </label>
-
-              <label className="flex items-center space-x-1.5 cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  checked={showRoutingPaths} 
-                  onChange={(e) => setShowRoutingPaths(e.target.checked)}
-                  className="rounded border-[#1C3150] accent-amber-400 cursor-pointer"
-                />
-                <span>Routing Paths</span>
-              </label>
-
-              <label className="flex items-center space-x-1.5 cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  checked={showClusters} 
-                  onChange={(e) => setShowClusters(e.target.checked)}
-                  className="rounded border-[#1C3150] accent-violet-400 cursor-pointer"
-                />
-                <span>Clusters</span>
-              </label>
-
-              <label className="flex items-center space-x-1.5 cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  checked={showTerrain} 
-                  onChange={(e) => setShowTerrain(e.target.checked)}
-                  className="rounded border-[#1C3150] accent-blue-500 cursor-pointer"
-                />
-                <span>Terrain</span>
-              </label>
-
-              <label className="flex items-center space-x-1.5 cursor-pointer">
-                <input 
-                  type="checkbox" 
-                  checked={showEnergyState} 
-                  onChange={(e) => setShowEnergyState(e.target.checked)}
-                  className="rounded border-[#1C3150] accent-emerald-400 cursor-pointer"
-                />
-                <span>Energy State</span>
-              </label>
-            </div>
-          </div>
-
-          {/* Scientific Legend */}
-          <div className="p-3.5 rounded-2xl bg-[#0D1626] border border-[#1C3150] grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 text-[11px] text-slate-300">
-            <div className="flex items-center space-x-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-sm shadow-cyan-400/50"></span>
-              <span>Active Node</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
-              <span>Sleeping Node</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 shadow-sm shadow-amber-400/50"></span>
-              <span>Cluster Head</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-orange-500"></span>
-              <span>Low Energy</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-500"></span>
-              <span>Dead Node</span>
-            </div>
-          </div>
+          )}
 
         </div>
 
-        {/* ========================================================= */}
-        {/* RIGHT COLUMN: SIMULATION PARAMETERS & TELEMETRY (4 cols)  */}
-        {/* ========================================================= */}
+        {/* ======================================================= */}
+        {/* RIGHT: SIMULATION CONTROL WORKBENCH                     */}
+        {/* ======================================================= */}
         {!isPresentationMode && (
-          <div className="lg:col-span-4 space-y-4">
+          <div className="lg:col-span-4 xl:col-span-3 flex flex-col justify-between lab-card rounded-3xl p-4 sm:p-5 border border-[#1C3150] bg-[#070E1A]/95 shadow-2xl space-y-4 overflow-y-auto max-h-[720px] relative">
             
-            <TiltCard3D 
-              intensity={4}
-              className="rounded-3xl border border-[#1C3150] bg-[#0B1220]/95 backdrop-blur-xl p-5 shadow-2xl space-y-5 text-slate-300 font-mono"
-            >
-              {/* Panel Header */}
-              <div className="flex items-center space-x-2 pb-3 border-b border-[#1C3150]">
-                <Settings2 className="w-4 h-4 text-cyan-400" />
-                <h2 className="text-sm font-bold text-white tracking-wide uppercase">
-                  Simulation Parameters
-                </h2>
-              </div>
+            {/* Top Button: RESEARCH DEMO (18 STEPS) */}
+            <div>
+              <button
+                onClick={() => startResearchDemo()}
+                disabled={isResearchDemoActive || isOptimizing}
+                className={`w-full py-3 px-4 rounded-2xl font-extrabold flex items-center justify-center space-x-2 transition-all cursor-pointer shadow-lg active:scale-95 text-xs ${
+                  isResearchDemoActive
+                    ? 'bg-emerald-600 text-white border border-emerald-400 animate-pulse'
+                    : 'bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 shadow-emerald-500/30'
+                }`}
+              >
+                <Compass className="w-4 h-4 text-slate-950" />
+                <span>{isResearchDemoActive ? `DEMO IN PROGRESS (STEP ${researchDemoStep}/18)...` : 'RESEARCH DEMO (18 STEPS)'}</span>
+              </button>
+            </div>
 
-              {/* Scenario Selector Dropdown */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                  Deployment Scenario
-                </label>
-                <select
-                  value={activeScenario.id}
-                  onChange={(e) => {
-                    soundFX.playClickSound();
-                    selectScenario(e.target.value);
-                  }}
-                  className="w-full bg-[#050912] border border-[#1C3150] rounded-xl px-3 py-2 text-xs font-semibold text-white focus:outline-none focus:border-cyan-500 transition-all cursor-pointer"
-                >
-                  <option value="sparse">Scenario 1: Sparse Grid (N=30, Rs=10m)</option>
-                  <option value="standard">Scenario 2: Standard Benchmark (N=50, Rs=15m)</option>
-                  <option value="dense">Scenario 3: High Density Cluster (N=80, Rs=12m)</option>
-                  <option value="large_field">Scenario 4: Extended Network Array (N=100, Rs=15m)</option>
-                </select>
-              </div>
+            <div className="w-full h-px bg-[#1C3150]/60" />
 
-              {/* Optimization Algorithm Selector */}
-              <div className="space-y-1.5">
-                <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center justify-between">
-                  <span>Optimization Algorithm</span>
-                  <span className="text-violet-400 font-bold">ANN Powered</span>
-                </label>
-                <select
-                  value={selectedOptimizer}
-                  onChange={(e) => {
-                    soundFX.playClickSound();
-                    setSelectedOptimizer(e.target.value as OptimizationAlgorithm);
-                  }}
-                  className="w-full bg-[#050912] border border-[#1C3150] rounded-xl px-3 py-2 text-xs font-semibold text-cyan-300 focus:outline-none focus:border-cyan-500 transition-all cursor-pointer"
-                >
-                  <option value="ann_greedy">Proposed: ANN + PSO-Hybrid (Deep Sleep Scheduling)</option>
-                  <option value="pso">Standard Particle Swarm Optimization (PSO)</option>
-                  <option value="vfa">Virtual Force Algorithm (VFA)</option>
-                  <option value="random">Random Uniform Baseline</option>
-                </select>
-              </div>
-
-              {/* Live Parameter Sliders */}
-              <div className="space-y-3 pt-1">
-                {/* Sensor Nodes (N) */}
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-400">Sensor Nodes (N)</span>
-                    <span className="font-bold text-cyan-400">{nodeCount}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={20}
-                    max={120}
-                    step={5}
-                    value={nodeCount}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      setNodeCount(val);
-                      handleApplySliders(val, sensingRad, commRad, initialEnergy, maxRounds);
-                    }}
-                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                  />
-                </div>
-
-                {/* Sensing Radius (Rs) */}
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-400">Sensing Radius (Rs)</span>
-                    <span className="font-bold text-cyan-400">{sensingRad}m</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={8}
-                    max={28}
-                    step={1}
-                    value={sensingRad}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      setSensingRad(val);
-                      handleApplySliders(nodeCount, val, commRad, initialEnergy, maxRounds);
-                    }}
-                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                  />
-                </div>
-
-                {/* Communication Radius (Rc) */}
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-400">Communication Radius (Rc)</span>
-                    <span className="font-bold text-cyan-400">{commRad}m</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={18}
-                    max={55}
-                    step={1}
-                    value={commRad}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      setCommRad(val);
-                      handleApplySliders(nodeCount, sensingRad, val, initialEnergy, maxRounds);
-                    }}
-                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                  />
-                </div>
-
-                {/* Initial Energy (E0) */}
-                <div className="space-y-1">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-400">Initial Energy (E0)</span>
-                    <span className="font-bold text-cyan-400">{initialEnergy} J</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0.1}
-                    max={2.0}
-                    step={0.1}
-                    value={initialEnergy}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      setInitialEnergy(val);
-                      handleApplySliders(nodeCount, sensingRad, commRad, val, maxRounds);
-                    }}
-                    className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-400"
-                  />
-                </div>
-              </div>
-
-              {/* PHASE 1: ANN OPTIMIZATION BUTTON */}
-              <div className="pt-2 space-y-2 border-t border-[#1C3150]">
-                <span className="text-[10px] font-bold text-violet-400 tracking-wider uppercase block flex items-center gap-1.5">
-                  <Brain className="w-3.5 h-3.5 text-violet-400" />
-                  PHASE 1: ANN CLASSIFICATION &amp; OPTIMIZATION
+            {/* ===================================================== */}
+            {/* PHASE 1: ANN + PSO SPATIAL OPTIMIZATION               */}
+            {/* ===================================================== */}
+            <div className="space-y-2 relative">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold text-cyan-400 tracking-wider">
+                  PHASE 1: ANN + PSO SPATIAL SWARM
                 </span>
-                <button
-                  onClick={handleExecuteOptimization}
-                  disabled={isOptimizing}
-                  className={`w-full py-3 rounded-2xl font-bold transition-all shadow-lg flex items-center justify-center space-x-2 text-xs cursor-pointer ${
-                    isOptimizing
-                      ? 'bg-violet-600/50 text-white cursor-wait'
-                      : 'bg-gradient-to-r from-violet-600 via-blue-600 to-cyan-500 hover:opacity-95 text-white shadow-violet-500/25 active:scale-[0.98]'
-                  }`}
-                >
-                  <Sparkles className="w-4 h-4" />
-                  <span>{isOptimizing ? `ANN Optimizing (Iter ${currentOptIteration}/15)...` : 'Execute ANN Sleep Pruning'}</span>
-                </button>
               </div>
 
-              {/* PHASE 2: ROUTING SELECTION & STREAM */}
-              <div className="pt-2 space-y-2.5 border-t border-[#1C3150]">
-                <span className="text-[10px] font-bold text-cyan-400 tracking-wider uppercase block">
-                  PHASE 2: DATA ROUTING DYNAMICS
-                </span>
+              {/* Run ANN Inference Button */}
+              <button
+                onClick={handleRunANN}
+                disabled={isANNRunning || isOptimizing}
+                className="w-full py-2 px-3 rounded-xl bg-[#0B1220] hover:bg-[#1C2B40] border border-cyan-500/40 text-cyan-300 font-bold flex items-center justify-center space-x-2 transition-all text-xs cursor-pointer"
+              >
+                <Brain className="w-3.5 h-3.5 text-cyan-400" />
+                <span>{isANNRunning ? 'Inferring 10-D Features...' : 'Run ANN Inference'}</span>
+              </button>
 
-                {/* Protocol Selector */}
+              {/* Blue Button: Execute ANN + PSO Optimization */}
+              <button
+                onClick={handleExecuteOptimization}
+                onMouseEnter={() => setHoveredHudCard('phase1')}
+                onMouseLeave={() => setHoveredHudCard(null)}
+                disabled={isOptimizing}
+                className={`w-full py-2.5 px-4 rounded-xl font-bold flex items-center justify-center space-x-2 transition-all text-xs cursor-pointer shadow-lg active:scale-95 ${
+                  isOptimizing
+                    ? 'bg-blue-700/60 text-blue-200 border border-blue-500/40 cursor-wait'
+                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-600/30'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>{isOptimizing ? `Optimizing Swarm (Iter ${currentOptIteration}/15)...` : 'Execute ANN + PSO Optimization'}</span>
+              </button>
+
+              {/* Floating HUD Card for Phase 1 */}
+              {hoveredHudCard === 'phase1' && (
+                <div className="hidden lg:block absolute right-[102%] top-0 w-80 p-4 rounded-2xl bg-[#070E1A]/95 backdrop-blur-xl border border-cyan-500/40 shadow-2xl space-y-2 text-xs font-mono z-40 animate-fadeIn pointer-events-none">
+                  <div className="flex items-center justify-between pb-1 border-b border-[#1C3150]">
+                    <span className="font-bold text-white text-xs">ANN-Guided Spatial Swarm</span>
+                    <span className="text-[9px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30 uppercase">
+                      ANN + PSO HYBRID
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-300">
+                    <span className="text-slate-500 font-bold">PIPELINE: </span>
+                    <span className="text-cyan-300 font-semibold">10-D Features &rarr; MLP &rarr; Pareto Swarm &rarr; Repositioning</span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-sans leading-relaxed">
+                    ANN predicts coverage contribution and overlap risk for each node. Virtual forces and PSO particle dynamics migrate nodes to fill unmonitored blindspots while reducing redundant overlap.
+                  </p>
+                  <div className="p-2 rounded-xl bg-[#050912] border border-[#1C3150] text-[10px] text-cyan-300 font-mono text-center">
+                    F = wC&middot;C - wO&middot;O - wB&middot;B - wD&middot;D + wE&middot;E
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="w-full h-px bg-[#1C3150]/60" />
+
+            {/* ===================================================== */}
+            {/* PHASE 2: DATA ROUTING DYNAMICS                        */}
+            {/* ===================================================== */}
+            <div className="space-y-3 relative">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">
+                  PHASE 2: ENERGY-AWARE ROUTING
+                </span>
+              </div>
+
+              {/* Protocol Selector Dropdown */}
+              <div>
                 <select
                   value={selectedProtocol}
                   onChange={(e) => {
                     soundFX.playClickSound();
                     setSelectedProtocol(e.target.value as RoutingProtocol);
                   }}
-                  className="w-full bg-[#050912] border border-[#1C3150] rounded-xl px-3 py-2 text-xs font-semibold text-white focus:outline-none focus:border-cyan-500 transition-all cursor-pointer"
+                  className="w-full bg-[#050912] border border-[#1C3150] text-slate-200 font-bold rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-cyan-400 transition-all cursor-pointer"
                 >
-                  <option value="pso_hybrid">Proposed: ANN + Hybrid LEACH-PEGASIS</option>
-                  <option value="pegasis">PEGASIS Protocol (Chain Hop)</option>
+                  <option value="pso_hybrid">PSO-Hybrid Multi-Hop Swarm (Recommended)</option>
                   <option value="leach">LEACH Protocol (Direct Cluster Relay)</option>
+                  <option value="pegasis">PEGASIS Protocol (Chain Hop)</option>
+                  <option value="hybrid">Hybrid LEACH-PEGASIS Protocol</option>
                 </select>
+              </div>
 
-                {/* Resume / Pause Stream Button */}
+              {/* Stream and Step Controls */}
+              <div className="flex items-center space-x-1.5">
+                <button
+                  onClick={handleStepBackwardEvent}
+                  className="p-2.5 rounded-xl bg-[#050912] border border-[#1C3150] text-slate-400 hover:text-white transition-all cursor-pointer flex items-center justify-center"
+                  title="Step Backward 1 Event Stage (-1 Step)"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+
+                {/* Green Stream Button */}
                 <button
                   onClick={handleToggleStream}
-                  className={`w-full py-3 rounded-2xl font-bold transition-all shadow-lg flex items-center justify-center space-x-2 text-xs cursor-pointer ${
+                  onMouseEnter={() => setHoveredHudCard('phase2')}
+                  onMouseLeave={() => setHoveredHudCard(null)}
+                  className={`flex-1 py-2.5 px-4 rounded-xl font-bold flex items-center justify-center space-x-2 transition-all text-xs cursor-pointer shadow-lg active:scale-95 ${
                     isPlaying
                       ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/25'
-                      : 'bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 shadow-cyan-500/25 active:scale-[0.98]'
+                      : 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white shadow-emerald-500/25'
                   }`}
                 >
-                  {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
                   <span>{isPlaying ? 'Pause Multi-Hop Stream' : 'Resume Multi-Hop Stream'}</span>
                 </button>
 
-                {/* Status footer */}
-                <div className="text-center text-xs text-slate-300 font-semibold pt-1">
-                  Round {currentRound} ({selectedProtocol === 'pso_hybrid' ? 'Hybrid' : selectedProtocol.toUpperCase()}) • {telemetry.activeNodes}/{telemetry.totalNodes} Active
+                <button
+                  onClick={handleStepForwardEvent}
+                  className="p-2.5 px-3 rounded-xl bg-[#050912] border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/20 transition-all cursor-pointer flex items-center space-x-1"
+                  title="Step Forward Exactly 1 Event Stage (+1 Step)"
+                >
+                  <span className="text-[10px] font-bold">STEP</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Live Round & Node Counter */}
+              <div className="text-center py-1 space-y-0.5">
+                <div className="text-xs font-bold text-slate-200 tracking-wide">
+                  Round {currentRound} ({protocolNameMap[selectedProtocol] || 'PSO-HYBRID'}) &bull; {telemetry.activeNodes}/{telemetry.totalNodes} Active
+                </div>
+                <div className="text-[10px] text-cyan-400">
+                  Stage 0{activeStageInfo.stageNumber}/08: {activeStageInfo.name} ({eventProgressPct}%)
                 </div>
               </div>
 
-            </TiltCard3D>
+              {/* Trigger Regional EMP Blast Button */}
+              <button
+                onClick={handleTriggerEMPBlast}
+                className="w-full py-2 px-3 rounded-xl bg-[#2A1329] hover:bg-[#3D1A3B] border border-rose-500/30 text-rose-300 font-bold flex items-center justify-center space-x-2 transition-all text-xs cursor-pointer"
+              >
+                <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                <span>Trigger Regional EMP Blast</span>
+              </button>
 
-            {/* Real-time Network Physical Telemetry Card */}
-            <TiltCard3D 
-              intensity={4}
-              className="rounded-3xl border border-[#1C3150] bg-[#0D1626] p-4 shadow-xl space-y-3 font-mono text-xs"
-            >
-              <div className="flex items-center justify-between pb-2 border-b border-[#1C3150]">
-                <span className="font-bold text-white uppercase text-[11px] flex items-center gap-1.5">
-                  <Activity className="w-3.5 h-3.5 text-cyan-400" />
-                  Physical Metrics
-                </span>
-                <span className="text-[10px] text-slate-400">First-Order Physics</span>
+              {/* Dark Slate Button: Reset to Initial Distribution */}
+              <button
+                onClick={handleResetExperiment}
+                className="w-full py-2 px-3 rounded-xl bg-[#0F172A] hover:bg-[#1E293B] border border-[#1C3150] text-slate-300 font-bold flex items-center justify-center space-x-1.5 transition-all text-xs cursor-pointer"
+              >
+                <span>Reset to Initial Distribution</span>
+              </button>
+            </div>
+
+            <div className="w-full h-px bg-[#1C3150]/60" />
+
+            {/* Seed Selector & Playback Speed Controls */}
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-slate-400 font-bold">Seed:</span>
+                <div className="flex items-center space-x-1">
+                  {[42, 43, 123, 456].map((sd) => (
+                    <button
+                      key={sd}
+                      onClick={() => {
+                        soundFX.playClickSound();
+                        setSelectedSeed(sd);
+                      }}
+                      className={`px-2 py-0.5 rounded-lg font-bold text-[10px] transition-all cursor-pointer ${
+                        selectedSeed === sd
+                          ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
+                          : 'bg-[#050912] border border-[#1C3150] text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      {sd}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 text-[11px]">
-                <div>
-                  <span className="text-slate-400 block text-[10px] uppercase">Residual Energy</span>
-                  <span className="text-cyan-400 font-bold">{telemetry.avgResidualEnergy.toFixed(3)} J</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px] uppercase">Coverage</span>
-                  <span className="text-cyan-300 font-bold">{telemetry.currentCoveragePct.toFixed(1)}%</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px] uppercase">Overlap Redundancy</span>
-                  <span className="text-violet-400 font-bold">{telemetry.currentOverlapPct.toFixed(1)}%</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px] uppercase">Packets Delivered</span>
-                  <span className="text-amber-400 font-bold">{telemetry.packetsReceived.toLocaleString()}</span>
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-slate-400 font-bold">Speed:</span>
+                <div className="flex items-center space-x-1">
+                  {[0.25, 0.5, 1, 2, 4].map((spd) => (
+                    <button
+                      key={spd}
+                      onClick={() => {
+                        soundFX.playClickSound();
+                        setPlaybackSpeed(spd);
+                      }}
+                      className={`px-1.5 py-0.5 rounded font-bold text-[10px] transition-all cursor-pointer ${
+                        playbackSpeed === spd
+                          ? 'bg-cyan-500 text-slate-950 font-black shadow-sm'
+                          : 'text-slate-400 hover:text-white bg-[#050912] border border-[#1C3150]'
+                      }`}
+                      title={spd === 0.25 ? 'Genuinely Slow Presentation Speed' : `${spd}x Speed`}
+                    >
+                      {spd}x
+                    </button>
+                  ))}
                 </div>
               </div>
-            </TiltCard3D>
+            </div>
+
+            {/* Quick Physical Parameters Drawer */}
+            <div className="pt-1">
+              <button
+                onClick={() => setIsDrawerOpen(!isDrawerOpen)}
+                className="w-full py-1.5 px-3 rounded-xl bg-[#050912] border border-[#1C3150] text-slate-400 hover:text-white flex items-center justify-between text-[10px] font-bold cursor-pointer transition-colors"
+              >
+                <span>{isDrawerOpen ? 'Hide Physical Sliders' : 'Physical Sliders (N, Rs, Rc)'}</span>
+                <Sliders className="w-3 h-3 text-cyan-400" />
+              </button>
+
+              {isDrawerOpen && (
+                <div className="p-3 rounded-2xl bg-[#050912] border border-[#1C3150] space-y-2 animate-fadeIn text-[10px] mt-2">
+                  <div className="space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Sensors (N):</span>
+                      <span className="font-bold text-cyan-300">{nodeCount}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={20}
+                      max={150}
+                      step={5}
+                      value={nodeCount}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setNodeCount(val);
+                        handleApplySliders(val, sensingRad, commRad, initialEnergy, maxRounds);
+                      }}
+                      className="w-full h-1 bg-slate-800 rounded appearance-none cursor-pointer accent-cyan-400"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-slate-400">Sensing Radius (Rs):</span>
+                      <span className="font-bold text-cyan-300">{sensingRad}m</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={8}
+                      max={35}
+                      step={1}
+                      value={sensingRad}
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        setSensingRad(val);
+                        handleApplySliders(nodeCount, val, commRad, initialEnergy, maxRounds);
+                      }}
+                      className="w-full h-1 bg-slate-800 rounded appearance-none cursor-pointer accent-cyan-400"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
 
           </div>
         )}
 
       </div>
 
-      {/* ========================================================= */}
-      {/* BOTTOM WORKFLOW: 8-STEP SIMULATION STORY PIPELINE        */}
-      {/* ========================================================= */}
-      <div className="space-y-3 pt-4">
-        <div className="flex items-center justify-between font-mono text-xs pb-1 border-b border-[#1C3150]">
-          <div className="flex items-center space-x-2">
-            <Radio className="w-4 h-4 text-cyan-400" />
-            <h3 className="font-bold text-white uppercase tracking-wider">
-              Simulation Pipeline &amp; Execution Workflow
-            </h3>
-          </div>
-          <span className="text-slate-400 text-[11px]">
-            Autonomous Dynamic Progression
-          </span>
+      {/* Floating EMP Feedback Toast */}
+      {empBannerText && (
+        <div className="fixed bottom-6 right-6 z-50 p-3 px-4 rounded-2xl bg-[#070E1A]/95 backdrop-blur-xl border border-rose-500/40 shadow-2xl text-xs font-mono text-rose-300 flex items-center space-x-2 animate-bounce">
+          <span>{empBannerText}</span>
         </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 font-mono text-xs">
-          {workflowSteps.map((step, idx) => {
-            const Icon = step.icon;
-            const isCompleted = step.progress === 100;
-            return (
-              <TiltCard3D
-                key={idx}
-                intensity={6}
-                playAudioOnHover={true}
-                className={`rounded-2xl p-3 border ${
-                  isCompleted 
-                    ? 'border-cyan-500/40 bg-[#0D1626]' 
-                    : 'border-[#1C3150] bg-[#070B14]'
-                } flex flex-col justify-between space-y-2 shadow-lg group hover:border-cyan-500/40 transition-all`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded font-mono ${
-                    isCompleted ? 'bg-cyan-500/20 text-cyan-300' : 'bg-slate-800 text-slate-400'
-                  }`}>
-                    {step.num}
-                  </span>
-                  <Icon className={`w-3.5 h-3.5 ${isCompleted ? 'text-cyan-400' : 'text-slate-500'}`} />
-                </div>
-
-                <div>
-                  <div className="font-bold text-white text-[11px] truncate">
-                    {step.name}
-                  </div>
-                  <div className="text-[9px] text-slate-400 truncate mt-0.5 font-sans">
-                    {step.desc}
-                  </div>
-                </div>
-
-                {/* Progress bar */}
-                <div className="w-full bg-slate-800 h-1 rounded-full overflow-hidden">
-                  <div 
-                    className="bg-gradient-to-r from-cyan-500 to-blue-500 h-full rounded-full transition-all"
-                    style={{ width: `${step.progress}%` }}
-                  />
-                </div>
-              </TiltCard3D>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Node Inspector Modal */}
-      {selectedNode && (
-        <NodeInspectorModal
-          node={selectedNode}
-          onClose={() => setSelectedNode(null)}
-        />
       )}
+
     </div>
   );
 };
-
